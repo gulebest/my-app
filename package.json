@@ -2,6 +2,9 @@
   "name": "my-app",
   "private": true,
   "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "bun run index.ts"
+  },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/bun": "latest"
@@ -10,5 +13,8 @@
   "type": "module",
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "concurrently": "^9.2.1"
   }
 }
