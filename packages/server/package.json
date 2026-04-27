@@ -1,21 +1,21 @@
 {
-  "name": "server",
-  "version": "1.0.0",
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1"
-  },
-  "scripts": {
-    "start": "bun run index.ts",
-    "dev": "bun --watch run index.ts"
-  },
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
+   "name": "server",
+   "version": "1.0.0",
+   "dependencies": {
+      "dotenv": "^17.4.2",
+      "express": "^5.2.1"
+   },
+   "scripts": {
+      "start": "bun run index.ts",
+      "dev": "bun --watch run index.ts"
+   },
+   "module": "index.ts",
+   "type": "module",
+   "private": true,
+   "devDependencies": {
+      "@types/bun": "latest"
+   },
+   "peerDependencies": {
+      "typescript": "^5"
+   }
 }
