@@ -8,6 +8,6 @@ function App() {
       .then(res => res.json())
       .then(data => setMessage(data.message));
   }, []);
-  return <p>{message}</p>;
+  return <p className="font-semibold p-4 text-lg text-center">{message}</p>;
 }
 export default App;
