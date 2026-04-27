@@ -1,17 +1,14 @@
 {
   "name": "my-app",
-  "module": "index.ts",
-  "type": "module",
   "private": true,
+  "workspaces": ["packages/*"],
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/bun": "latest"
   },
+  "module": "index.ts",
+  "type": "module",
   "peerDependencies": {
     "typescript": "^5"
-  },
-  "workspaces": [
-    "packages/*"
-    
-  ]
-
+  }
 }
