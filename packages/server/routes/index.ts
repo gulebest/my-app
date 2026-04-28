@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request } from 'express';
 import type { Response } from 'express';
-import { chatHandler } from '../controller/chat.controller';
+import { chatHandler, chatStreamHandler } from '../controller/chat.controller';
 
 const router = Router();
 
@@ -14,5 +14,6 @@ router.get('/api/hello', (req: Request, res: Response) => {
 });
 
 router.post('/api/chat', chatHandler);
+router.post('/api/chat/stream', chatStreamHandler);
 
 export default router;

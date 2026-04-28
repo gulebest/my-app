@@ -81,6 +81,26 @@
    --sidebar-accent-foreground: oklch(0.205 0 0);
    --sidebar-border: oklch(0.922 0 0);
    --sidebar-ring: oklch(0.708 0 0);
+   --app-page-bg: #0f1220;
+   --app-shell-bg: #151828;
+   --app-shell-border: #2d304b;
+   --app-sidebar-bg: #171a2b;
+   --app-header-bg: #171a2b;
+   --app-divider: #2a2e45;
+   --app-soft-surface: #242838;
+   --app-card-bg: #23284a;
+   --app-card-from: #1e2240;
+   --app-card-to: #232955;
+   --app-card-border: #3a3f66;
+   --app-chat-from: #2a2d4e;
+   --app-chat-via: #2f335a;
+   --app-chat-to: #3c4068;
+   --app-chat-border: #6269a8;
+   --app-input-bar-bg: #24294c;
+   --app-input-border: #4f5489;
+   --app-assistant-bubble: #23244a;
+   --app-text-strong: #f8fafc;
+   --app-text-muted: #96a2c3;
 }
 
 .dark {
@@ -117,12 +137,37 @@
    --sidebar-ring: oklch(0.556 0 0);
 }
 
+.theme-light {
+   --app-page-bg: #dfe4ef;
+   --app-shell-bg: #f5f7fc;
+   --app-shell-border: #d2d8e8;
+   --app-sidebar-bg: #ebeff8;
+   --app-header-bg: #f6f8fd;
+   --app-divider: #d5dceb;
+   --app-soft-surface: #ffffff;
+   --app-card-bg: #e0e6f5;
+   --app-card-from: #edf2ff;
+   --app-card-to: #dde5fa;
+   --app-card-border: #c7d2ef;
+   --app-chat-from: #f1f4fc;
+   --app-chat-via: #e9eefb;
+   --app-chat-to: #dde5f8;
+   --app-chat-border: #cbd5ee;
+   --app-input-bar-bg: #ffffff;
+   --app-input-border: #cad4ed;
+   --app-assistant-bubble: #e3e9f7;
+   --app-text-strong: #0f172a;
+   --app-text-muted: #4d5d7d;
+}
+
 @layer base {
    * {
       @apply border-border outline-ring/50;
    }
    body {
-      @apply bg-background text-foreground;
+      @apply text-foreground;
+      background-color: var(--app-page-bg);
+      min-height: 100vh;
    }
    html {
       @apply font-sans;

@@ -1,19 +1,15 @@
-import { useEffect, useState } from 'react';
-import { Button } from './components/ui/button';
+import { MainLayout } from './components/layout/MainLayout';
+import { ChatContainer } from './components/layout/ChatContainer';
+import { ChatThread } from './components/chat/ChatThread';
 
 function App() {
-   const [message, setMessage] = useState('');
-
-   useEffect(() => {
-      fetch('/api/hello')
-         .then((res) => res.json())
-         .then((data) => setMessage(data.message));
-   }, []);
    return (
-      <div className="p-4">
-         <p className="font-semibold text-lg text-center">{message}</p>
-         <Button>click me</Button>
-      </div>
+      <MainLayout>
+         <ChatContainer>
+            <ChatThread />
+         </ChatContainer>
+      </MainLayout>
    );
 }
+
 export default App;

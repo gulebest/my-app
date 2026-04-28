@@ -83,4 +83,38 @@ export class ChatService {
       conversationRepository.saveConversation(key, conversation);
       return { message };
    }
+
+   async *chatStream(prompt: string, conversationId: string, userId: string) {
+      const key = this.getConversationKey(userId, conversationId);
+      const conversation = conversationRepository.getConversation(key) ?? [];
+      conversation.push({ role: 'user', content: prompt });
+
+      let stream;
+      try {
+         stream = await client.chat.completions.create({
+            model: 'openai/gpt-4o-mini',
+            messages: conversation,
+            temperature: 0.2,
+            max_tokens: 300,
+            stream: true,
+         });
+      } catch (aiError) {
+         throw { type: 'ai', error: aiError };
+      }
+
+      let fullMessage = '';
+      for await (const chunk of stream) {
+         const delta = chunk.choices?.[0]?.delta?.content;
+         if (!delta) {
+            continue;
+         }
+         fullMessage += delta;
+         yield delta;
+      }
+
+      if (fullMessage.trim().length > 0) {
+         conversation.push({ role: 'assistant', content: fullMessage });
+      }
+      conversationRepository.saveConversation(key, conversation);
+   }
 }
