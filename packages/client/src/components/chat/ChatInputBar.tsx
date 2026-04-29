@@ -52,7 +52,7 @@ export function ChatInputBar({ onSend, disabled = false }: ChatInputBarProps) {
 
    return (
       <form
-         className="relative mt-4 flex items-center gap-3 rounded-2xl border border-[var(--app-input-border)] bg-[var(--app-input-bar-bg)] px-4 py-3 shadow-[0_10px_24px_rgba(10,12,30,0.35)]"
+         className="relative mt-4 flex items-center gap-3 rounded-2xl border border-(--app-input-border) bg-[var(--app-input-bar-bg)] px-4 py-3 shadow-[0_10px_24px_rgba(10,12,30,0.35)]"
          onSubmit={async (e) => {
             e.preventDefault();
             const message = value.trim();
@@ -75,10 +75,10 @@ export function ChatInputBar({ onSend, disabled = false }: ChatInputBarProps) {
             title="Attach file"
             disabled={disabled}
          >
-            <Paperclip className="h-5 w-5 text-[var(--app-text-muted)]" />
+            <Paperclip className="h-5 w-5 text-(--app-text-muted)" />
          </button>
          <input
-            className="flex-1 bg-transparent px-2 text-[var(--app-text-strong)] outline-none placeholder:text-[var(--app-text-muted)]"
+            className="flex-1 bg-transparent px-2 text-(--app-text-strong) outline-none placeholder:text-(--app-text-muted)"
             placeholder="Start typing"
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -91,7 +91,7 @@ export function ChatInputBar({ onSend, disabled = false }: ChatInputBarProps) {
             title="Insert emoji"
             disabled={disabled}
          >
-            <Smile className="h-5 w-5 text-[var(--app-text-muted)]" />
+            <Smile className="h-5 w-5 text-(--app-text-muted)" />
          </button>
          {showEmoji && (
             <div className="absolute bottom-16 right-0 z-30 flex w-56 flex-wrap gap-2 rounded-xl bg-[#23244a] p-3 shadow-lg">

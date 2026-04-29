@@ -12,10 +12,8 @@ import {
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import cn from 'clsx';
-
-const navigateTo = (path: string) => {
-   window.location.assign(path);
-};
+import { navigateTo } from '../../lib/navigation';
+import type { AuthUser } from '../../lib/auth-storage';
 
 const openSettings = () => alert('Settings modal would open.');
 const openUpdates = () => alert('Updates & FAQ modal would open.');
@@ -26,13 +24,23 @@ const upgradeToPro = () => {
       'noopener,noreferrer'
    );
 };
-const logout = () => alert('You have been logged out.');
+interface SidebarProps {
+   currentUser: AuthUser | null;
+   onSignInClick: () => void;
+   onSignUpClick: () => void;
+   onLogout: () => void;
+}
 
-export function Sidebar() {
+export function Sidebar({
+   currentUser,
+   onSignInClick,
+   onSignUpClick,
+   onLogout,
+}: SidebarProps) {
    const [templatesOpen, setTemplatesOpen] = useState(false);
 
    return (
-      <aside className="flex h-full w-72 flex-col gap-4 overflow-y-auto border-r border-[var(--app-divider)] bg-[var(--app-sidebar-bg)] p-6 text-[var(--app-text-strong)]">
+      <aside className="flex h-full w-72 flex-col gap-4 overflow-y-auto border-r border-[var(--app-divider)] bg-[var(--app-sidebar-bg)] p-6 text-(--app-text-strong)">
          <div className="mb-6 flex items-center gap-3">
             <div className="rounded-xl bg-[#23244a] p-2">
                <Home className="h-7 w-7 text-indigo-400" />
@@ -42,7 +50,7 @@ export function Sidebar() {
 
          <div className="relative mb-2">
             <input
-               className="w-full rounded-xl bg-[var(--app-soft-surface)] py-2 pl-10 pr-3 text-sm placeholder:text-[var(--app-text-muted)] focus:outline-none"
+               className="w-full rounded-xl bg-[var(--app-soft-surface)] py-2 pl-10 pr-3 text-sm placeholder:text-(--app-text-muted) focus:outline-none"
                placeholder="Search"
             />
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
@@ -63,7 +71,7 @@ export function Sidebar() {
                onClick={() => setTemplatesOpen((open) => !open)}
             />
             {templatesOpen && (
-               <div className="ml-8 flex flex-col gap-1 text-sm text-[var(--app-text-muted)]">
+               <div className="ml-8 flex flex-col gap-1 text-sm text-(--app-text-muted)">
                   <button
                      className="text-left hover:text-indigo-400"
                      onClick={() => alert('Template 1 selected')}
@@ -91,7 +99,7 @@ export function Sidebar() {
          </nav>
 
          <div className="mt-6">
-            <div className="mb-1 text-xs text-[var(--app-text-muted)]">
+            <div className="mb-1 text-xs text-(--app-text-muted)">
                SETTINGS & HELP
             </div>
             <SidebarItem
@@ -108,7 +116,7 @@ export function Sidebar() {
 
          <div className="mt-6 flex flex-col items-start gap-2 rounded-2xl border border-[var(--app-card-border)] bg-gradient-to-br from-[var(--app-card-from)] to-[var(--app-card-to)] p-4 shadow-[0_14px_28px_rgba(6,8,18,0.35)]">
             <div className="text-sm font-semibold">Assistly Pro Plan</div>
-            <div className="text-xs text-[var(--app-text-muted)]">
+            <div className="text-xs text-(--app-text-muted)">
                Complete freedom.
                <br />
                Maximum performance.
@@ -121,18 +129,47 @@ export function Sidebar() {
             </button>
          </div>
 
-         <div className="mt-auto flex items-center gap-3 rounded-xl bg-[var(--app-card-bg)] p-3">
-            <User className="h-8 w-8 text-indigo-400" />
-            <div className="flex-1">
-               <div className="text-sm font-medium">Jeoffrey N.</div>
-               <div className="text-xs text-[var(--app-text-muted)]">
-                  hey@jeoffrey.info
+         {currentUser ? (
+            <div className="mt-auto flex items-center gap-3 rounded-xl bg-[var(--app-card-bg)] p-3">
+               <User className="h-8 w-8 text-indigo-400" />
+               <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">
+                     {currentUser.fullName}
+                  </div>
+                  <div className="truncate text-xs text-(--app-text-muted)">
+                     {currentUser.email}
+                  </div>
+               </div>
+               <button onClick={onLogout} title="Logout">
+                  <LogOut className="h-5 w-5 cursor-pointer text-gray-400" />
+               </button>
+            </div>
+         ) : (
+            <div className="mt-auto rounded-xl bg-[var(--app-card-bg)] p-3">
+               <div className="mb-2 text-sm font-semibold text-(--app-text-strong)">
+                  Guest Session
+               </div>
+               <p className="mb-3 text-xs text-(--app-text-muted)">
+                  Sign in to save chat history and account settings.
+               </p>
+               <div className="flex gap-2">
+                  <button
+                     type="button"
+                     onClick={onSignInClick}
+                     className="flex-1 rounded-lg bg-indigo-500 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-600"
+                  >
+                     Sign In
+                  </button>
+                  <button
+                     type="button"
+                     onClick={onSignUpClick}
+                     className="flex-1 rounded-lg border border-(--app-input-border) px-3 py-2 text-xs font-semibold text-(--app-text-strong) hover:bg-[var(--app-soft-surface)]"
+                  >
+                     Sign Up
+                  </button>
                </div>
             </div>
-            <button onClick={logout} title="Logout">
-               <LogOut className="h-5 w-5 cursor-pointer text-gray-400" />
-            </button>
-         </div>
+         )}
       </aside>
    );
 }
@@ -161,7 +198,7 @@ function SidebarItem({
             'flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition',
             active
                ? 'bg-gradient-to-r from-[#5863ff] to-[#4f59e8] font-semibold text-white'
-               : 'text-[var(--app-text-muted)] hover:bg-[var(--app-soft-surface)]',
+               : 'text-(--app-text-muted) hover:bg-[var(--app-soft-surface)]',
             expandable && 'justify-between'
          )}
          onClick={onClick}

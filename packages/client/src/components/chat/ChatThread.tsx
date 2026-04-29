@@ -1,10 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChatMessage, type ChatMessageProps } from './ChatMessage';
 import { ChatInputBar } from './ChatInputBar';
+import type { AuthUser } from '../../lib/auth-storage';
+import {
+   loadLatestConversation,
+   saveConversationMessages,
+} from '../../lib/firestore-chat';
+import { auth } from '../../lib/firebase';
+import { isFirestorePermissionDenied } from '../../lib/firebase-errors';
 
 interface ChatApiResponse {
    message: string;
    conversationId: string;
+}
+
+interface ChatThreadProps {
+   currentUser: AuthUser | null;
 }
 
 const initialMessages: ChatMessageProps[] = [
@@ -14,49 +25,190 @@ const initialMessages: ChatMessageProps[] = [
    },
 ];
 
+const GUEST_LIMIT = 20;
+const GUEST_COUNT_KEY = 'assistly-guest-question-count';
+
+function getGuestQuestionCount() {
+   try {
+      const raw = window.localStorage.getItem(GUEST_COUNT_KEY);
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+   } catch {
+      return 0;
+   }
+}
+
+function setGuestQuestionCount(value: number) {
+   window.localStorage.setItem(GUEST_COUNT_KEY, String(value));
+}
+
+function safeParseJson(payload: string): unknown {
+   try {
+      return JSON.parse(payload);
+   } catch {
+      return null;
+   }
+}
+
 async function requestChatReply(
    prompt: string,
-   conversationId: string
+   conversationId: string,
+   idToken?: string
 ): Promise<ChatApiResponse> {
-   const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: {
-         'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ prompt, conversationId }),
-   });
+   const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+   };
+   if (idToken) {
+      headers.Authorization = `Bearer ${idToken}`;
+   }
 
-   const data = (await response.json()) as ChatApiResponse | { error?: string };
+   let response: Response;
+   try {
+      response = await fetch('/api/chat', {
+         method: 'POST',
+         headers,
+         body: JSON.stringify({ prompt, conversationId }),
+      });
+   } catch {
+      throw new Error(
+         'Cannot reach chat API. Start the backend server on http://localhost:3000 and try again.'
+      );
+   }
+
+   const rawPayload = await response.text();
+   const data = rawPayload ? safeParseJson(rawPayload) : null;
 
    if (!response.ok) {
       const apiMessage =
-         typeof data === 'object' && data && 'error' in data ? data.error : '';
+         typeof data === 'object' && data && 'error' in data
+            ? String((data as { error?: string }).error || '')
+            : '';
+
+      if (response.status === 502 || response.status === 503) {
+         throw new Error(
+            'Chat API is unavailable right now. Start the backend server on http://localhost:3000 and try again.'
+         );
+      }
+
       throw new Error(apiMessage || `Request failed (${response.status})`);
+   }
+
+   if (
+      !data ||
+      typeof data !== 'object' ||
+      !('message' in data) ||
+      !('conversationId' in data)
+   ) {
+      throw new Error('Chat API returned an invalid response format.');
    }
 
    return data as ChatApiResponse;
 }
 
-export function ChatThread() {
+export function ChatThread({ currentUser }: ChatThreadProps) {
    const [messages, setMessages] = useState(initialMessages);
    const [conversationId, setConversationId] = useState('');
    const [isSending, setIsSending] = useState(false);
    const [error, setError] = useState<string | null>(null);
+   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+   const [guestQuestionsAsked, setGuestQuestionsAsked] = useState(() =>
+      getGuestQuestionCount()
+   );
+
+   const currentUserId = useMemo(() => currentUser?.uid || null, [currentUser]);
+
+   useEffect(() => {
+      let cancelled = false;
+
+      async function loadHistory() {
+         setError(null);
+
+         if (!currentUserId) {
+            setMessages(initialMessages);
+            setConversationId('');
+            return;
+         }
+
+         setIsHistoryLoading(true);
+         try {
+            const latest = await loadLatestConversation(currentUserId);
+            if (cancelled) {
+               return;
+            }
+
+            if (!latest || latest.messages.length === 0) {
+               setMessages(initialMessages);
+               setConversationId('');
+               return;
+            }
+
+            setConversationId(latest.conversationId);
+            setMessages(latest.messages);
+         } catch (err) {
+            if (!isFirestorePermissionDenied(err)) {
+               console.error('Failed to load chat history', err);
+            }
+            if (!cancelled) {
+               setMessages(initialMessages);
+            }
+         } finally {
+            if (!cancelled) {
+               setIsHistoryLoading(false);
+            }
+         }
+      }
+
+      void loadHistory();
+
+      return () => {
+         cancelled = true;
+      };
+   }, [currentUserId]);
 
    const handleSend = async (msg: string) => {
-      if (isSending) {
+      if (isSending || isHistoryLoading) {
          return;
+      }
+
+      if (!currentUserId && guestQuestionsAsked >= GUEST_LIMIT) {
+         setError(
+            'Guest limit reached (20 questions). Please sign in or create an account to continue.'
+         );
+         setMessages((current) => [
+            ...current,
+            {
+               role: 'assistant',
+               content:
+                  'You have reached the 20-question guest limit. Please sign in or create an account to continue.',
+            },
+         ]);
+         return;
+      }
+
+      let idToken: string | undefined;
+      if (currentUserId) {
+         idToken = await auth.currentUser?.getIdToken();
+         if (!idToken) {
+            setError('Authentication expired. Please sign in again.');
+            return;
+         }
       }
 
       setError(null);
       setMessages((current) => [...current, { role: 'user', content: msg }]);
       setIsSending(true);
 
+      if (!currentUserId) {
+         const nextCount = guestQuestionsAsked + 1;
+         setGuestQuestionsAsked(nextCount);
+         setGuestQuestionCount(nextCount);
+      }
+
       try {
          let result: ChatApiResponse;
 
          try {
-            result = await requestChatReply(msg, conversationId);
+            result = await requestChatReply(msg, conversationId, idToken);
          } catch (err) {
             const isMissingConversation =
                err instanceof Error &&
@@ -67,19 +219,39 @@ export function ChatThread() {
                throw err;
             }
 
-            result = await requestChatReply(msg, '');
+            result = await requestChatReply(msg, '', idToken);
          }
+
+         const assistantContent =
+            result.message?.trim() ||
+            "I couldn't generate a response this time.";
 
          setConversationId(result.conversationId);
          setMessages((current) => [
             ...current,
             {
                role: 'assistant',
-               content:
-                  result.message?.trim() ||
-                  "I couldn't generate a response this time.",
+               content: assistantContent,
             },
          ]);
+
+         if (currentUserId) {
+            try {
+               await saveConversationMessages({
+                  uid: currentUserId,
+                  conversationId: result.conversationId,
+                  userPrompt: msg,
+                  assistantReply: assistantContent,
+               });
+            } catch (persistErr) {
+               if (!isFirestorePermissionDenied(persistErr)) {
+                  console.error(
+                     'Failed to persist chat to Firestore',
+                     persistErr
+                  );
+               }
+            }
+         }
       } catch (err) {
          const message =
             err instanceof Error
@@ -112,7 +284,10 @@ export function ChatThread() {
                {error}
             </p>
          )}
-         <ChatInputBar onSend={handleSend} disabled={isSending} />
+         <ChatInputBar
+            onSend={handleSend}
+            disabled={isSending || isHistoryLoading}
+         />
       </div>
    );
 }

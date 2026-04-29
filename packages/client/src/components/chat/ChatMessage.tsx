@@ -97,7 +97,7 @@ export function ChatMessage({
                'max-w-[70%] rounded-2xl px-4 py-2 text-sm',
                role === 'user'
                   ? 'rounded-br-md bg-indigo-500 text-white'
-                  : 'rounded-bl-md bg-[var(--app-assistant-bubble)] text-[var(--app-text-strong)]'
+                  : 'rounded-bl-md bg-[var(--app-assistant-bubble)] text-(--app-text-strong)'
             )}
          >
             {content}

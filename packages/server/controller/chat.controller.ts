@@ -13,21 +13,18 @@ export const chatHandler = async (req: Request, res: Response) => {
       });
    }
 
-   const { prompt, conversationId, userId } = parsed.data;
+   const { prompt, conversationId } = parsed.data;
+   const uid = req.authUser?.uid ?? 'anonymous';
 
    // Conversation existence/creation logic
-   const convoResult = chatService.ensureConversation(conversationId, userId);
+   const convoResult = chatService.ensureConversation(conversationId, uid);
    if ('error' in convoResult) {
       return res.status(404).json({ error: convoResult.error });
    }
-   const { key, conversationId: resolvedId } = convoResult;
+   const { conversationId: resolvedId } = convoResult;
 
    try {
-      const { message } = await chatService.chat(
-         prompt,
-         resolvedId,
-         userId ?? 'anonymous'
-      );
+      const { message } = await chatService.chat(prompt, resolvedId, uid);
       res.json({ message, conversationId: resolvedId });
    } catch (err: any) {
       if (err?.type === 'ai') {
@@ -52,8 +49,9 @@ export const chatStreamHandler = async (req: Request, res: Response) => {
       });
    }
 
-   const { prompt, conversationId, userId } = parsed.data;
-   const convoResult = chatService.ensureConversation(conversationId, userId);
+   const { prompt, conversationId } = parsed.data;
+   const uid = req.authUser?.uid ?? 'anonymous';
+   const convoResult = chatService.ensureConversation(conversationId, uid);
    if ('error' in convoResult) {
       return res.status(404).json({ error: convoResult.error });
    }
@@ -83,7 +81,7 @@ export const chatStreamHandler = async (req: Request, res: Response) => {
       for await (const delta of chatService.chatStream(
          prompt,
          resolvedId,
-         userId ?? 'anonymous'
+         uid
       )) {
          if (isClientClosed) {
             break;

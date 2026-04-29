@@ -30,11 +30,11 @@ export function Topbar() {
       <header className="relative flex h-16 items-center justify-between border-b border-[var(--app-divider)] bg-[var(--app-header-bg)] px-6 md:px-8">
          {/* App Title and Dropdown */}
          <div className="flex items-center gap-3 relative">
-            <span className="text-lg font-semibold text-[var(--app-text-strong)]">
+            <span className="text-lg font-semibold text-(--app-text-strong)">
                Messaging app
             </span>
             <button
-               className="ml-2 flex items-center gap-1 rounded-lg bg-[var(--app-soft-surface)] px-2 py-1 text-sm text-[var(--app-text-muted)]"
+               className="ml-2 flex items-center gap-1 rounded-lg bg-[var(--app-soft-surface)] px-2 py-1 text-sm text-(--app-text-muted)"
                onClick={handleDropdown}
                aria-expanded={dropdownOpen}
             >
@@ -47,7 +47,7 @@ export function Topbar() {
                />
             </button>
             {dropdownOpen && (
-               <div className="absolute left-0 top-12 z-20 min-w-[180px] rounded-xl bg-[var(--app-soft-surface)] px-4 py-2 text-[var(--app-text-strong)] shadow-lg">
+               <div className="absolute left-0 top-12 z-20 min-w-[180px] rounded-xl bg-[var(--app-soft-surface)] px-4 py-2 text-(--app-text-strong) shadow-lg">
                   <div className="cursor-pointer rounded px-2 py-1 hover:bg-[var(--app-card-bg)]">
                      Workspace 1
                   </div>
@@ -67,12 +67,12 @@ export function Topbar() {
                onClick={handleNotifications}
                aria-expanded={notificationsOpen}
             >
-               <Bell className="h-5 w-5 text-[var(--app-text-muted)]" />
+               <Bell className="h-5 w-5 text-(--app-text-muted)" />
                <span className="absolute top-1 right-1 w-2 h-2 bg-indigo-500 rounded-full" />
             </button>
             {notificationsOpen && (
-               <div className="absolute right-0 top-12 z-20 min-w-[220px] rounded-xl bg-[var(--app-soft-surface)] px-4 py-2 text-[var(--app-text-strong)] shadow-lg">
-                  <div className="px-2 py-1 text-sm text-[var(--app-text-muted)]">
+               <div className="absolute right-0 top-12 z-20 min-w-[220px] rounded-xl bg-[var(--app-soft-surface)] px-4 py-2 text-(--app-text-strong) shadow-lg">
+                  <div className="px-2 py-1 text-sm text-(--app-text-muted)">
                      No new notifications
                   </div>
                </div>

@@ -10,7 +10,6 @@ const chatRequestSchema = z.object({
       .min(1, 'Prompt is required')
       .max(1000, 'Prompt is too long (max 1000 characters)'),
    conversationId: z.string().trim().optional(),
-   userId: z.string().trim().optional(),
 });
 
 const client = new OpenAI({
@@ -37,30 +36,26 @@ export class ChatService {
       return chatRequestSchema.safeParse(body);
    }
 
-   getConversationKey(userId?: string, conversationId?: string) {
-      const userKey = userId && userId.length > 0 ? userId : 'anonymous';
-      return `${userKey}:${conversationId}`;
+   getConversationKey(uid: string, conversationId: string) {
+      return `${uid}:${conversationId}`;
    }
 
-   ensureConversation(
-      conversationId: string | undefined,
-      userId: string | undefined
-   ) {
+   ensureConversation(conversationId: string | undefined, uid: string) {
       if (conversationId && conversationId.trim() !== '') {
-         const key = this.getConversationKey(userId, conversationId);
+         const key = this.getConversationKey(uid, conversationId);
          if (!conversationRepository.conversationExists(key)) {
             return { error: 'Conversation not found' };
          }
          return { key, conversationId };
       } else {
          const newId = createConversationId();
-         const key = this.getConversationKey(userId, newId);
+         const key = this.getConversationKey(uid, newId);
          return { key, conversationId: newId };
       }
    }
 
-   async chat(prompt: string, conversationId: string, userId: string) {
-      const key = this.getConversationKey(userId, conversationId);
+   async chat(prompt: string, conversationId: string, uid: string) {
+      const key = this.getConversationKey(uid, conversationId);
       let conversation = conversationRepository.getConversation(key) ?? [];
       conversation.push({ role: 'user', content: prompt });
 
@@ -84,8 +79,8 @@ export class ChatService {
       return { message };
    }
 
-   async *chatStream(prompt: string, conversationId: string, userId: string) {
-      const key = this.getConversationKey(userId, conversationId);
+   async *chatStream(prompt: string, conversationId: string, uid: string) {
+      const key = this.getConversationKey(uid, conversationId);
       const conversation = conversationRepository.getConversation(key) ?? [];
       conversation.push({ role: 'user', content: prompt });
 
