@@ -3,8 +3,8 @@ import { ChatMessage, type ChatMessageProps } from './ChatMessage';
 import { ChatInputBar } from './ChatInputBar';
 import type { AuthUser } from '../../lib/auth-storage';
 import {
+   loadConversationById,
    loadLatestConversation,
-   saveConversationMessages,
 } from '../../lib/firestore-chat';
 import { auth } from '../../lib/firebase';
 import { isFirestorePermissionDenied } from '../../lib/firebase-errors';
@@ -16,6 +16,10 @@ interface ChatApiResponse {
 
 interface ChatThreadProps {
    currentUser: AuthUser | null;
+   activeConversationId: string | null;
+   shouldLoadLatestConversation: boolean;
+   onConversationResolved: (conversationId: string) => void;
+   onConversationUpdated: () => void;
 }
 
 const initialMessages: ChatMessageProps[] = [
@@ -105,7 +109,13 @@ async function requestChatReply(
    return data as ChatApiResponse;
 }
 
-export function ChatThread({ currentUser }: ChatThreadProps) {
+export function ChatThread({
+   currentUser,
+   activeConversationId,
+   shouldLoadLatestConversation,
+   onConversationResolved,
+   onConversationUpdated,
+}: ChatThreadProps) {
    const [messages, setMessages] = useState(initialMessages);
    const [conversationId, setConversationId] = useState('');
    const [isSending, setIsSending] = useState(false);
@@ -131,19 +141,38 @@ export function ChatThread({ currentUser }: ChatThreadProps) {
 
          setIsHistoryLoading(true);
          try {
-            const latest = await loadLatestConversation(currentUserId);
+            const loaded = activeConversationId
+               ? await loadConversationById(currentUserId, activeConversationId)
+               : shouldLoadLatestConversation
+                 ? await loadLatestConversation(currentUserId)
+                 : null;
+
             if (cancelled) {
                return;
             }
 
-            if (!latest || latest.messages.length === 0) {
-               setMessages(initialMessages);
-               setConversationId('');
+            if (!loaded || loaded.messages.length === 0) {
+               setMessages((current) => {
+                  const hasUserContent = current.some(
+                     (item) =>
+                        item.role === 'user' && item.content.trim().length > 0
+                  );
+
+                  if (activeConversationId && hasUserContent) {
+                     return current;
+                  }
+
+                  return initialMessages;
+               });
+               setConversationId(activeConversationId || '');
                return;
             }
 
-            setConversationId(latest.conversationId);
-            setMessages(latest.messages);
+            setConversationId(loaded.conversationId);
+            setMessages(loaded.messages);
+            if (currentUserId) {
+               onConversationResolved(loaded.conversationId);
+            }
          } catch (err) {
             if (!isFirestorePermissionDenied(err)) {
                console.error('Failed to load chat history', err);
@@ -163,7 +192,12 @@ export function ChatThread({ currentUser }: ChatThreadProps) {
       return () => {
          cancelled = true;
       };
-   }, [currentUserId]);
+   }, [
+      activeConversationId,
+      currentUserId,
+      onConversationResolved,
+      shouldLoadLatestConversation,
+   ]);
 
    const handleSend = async (msg: string) => {
       if (isSending || isHistoryLoading) {
@@ -227,6 +261,10 @@ export function ChatThread({ currentUser }: ChatThreadProps) {
             "I couldn't generate a response this time.";
 
          setConversationId(result.conversationId);
+         if (currentUserId) {
+            onConversationResolved(result.conversationId);
+            onConversationUpdated();
+         }
          setMessages((current) => [
             ...current,
             {
@@ -234,24 +272,6 @@ export function ChatThread({ currentUser }: ChatThreadProps) {
                content: assistantContent,
             },
          ]);
-
-         if (currentUserId) {
-            try {
-               await saveConversationMessages({
-                  uid: currentUserId,
-                  conversationId: result.conversationId,
-                  userPrompt: msg,
-                  assistantReply: assistantContent,
-               });
-            } catch (persistErr) {
-               if (!isFirestorePermissionDenied(persistErr)) {
-                  console.error(
-                     'Failed to persist chat to Firestore',
-                     persistErr
-                  );
-               }
-            }
-         }
       } catch (err) {
          const message =
             err instanceof Error
@@ -274,7 +294,7 @@ export function ChatThread({ currentUser }: ChatThreadProps) {
 
    return (
       <div className="flex min-h-0 flex-1 flex-col">
-         <div className="min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
+         <div className="app-scroll min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
             {messages.map((msg, i) => (
                <ChatMessage key={i} {...msg} />
             ))}

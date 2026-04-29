@@ -84,6 +84,42 @@ export async function loadLatestConversation(
    }
 }
 
+export async function loadConversationById(
+   uid: string,
+   conversationId: string
+): Promise<LoadedConversation | null> {
+   try {
+      const messageQuery = query(
+         messagesCol(uid, conversationId),
+         orderBy('createdAt', 'asc')
+      );
+      const messageSnapshot = await getDocs(messageQuery);
+
+      if (messageSnapshot.empty) {
+         return null;
+      }
+
+      const messages = messageSnapshot.docs
+         .map((messageDoc) => messageDoc.data() as DocumentData)
+         .filter((item) => item.role === 'user' || item.role === 'assistant')
+         .map((item) => ({
+            role: item.role as 'user' | 'assistant',
+            content: String(item.content || ''),
+         }))
+         .filter((item) => item.content.trim().length > 0);
+
+      return {
+         conversationId,
+         messages,
+      };
+   } catch (error) {
+      if (isFirestorePermissionDenied(error)) {
+         return null;
+      }
+      throw error;
+   }
+}
+
 export async function saveConversationMessages(params: {
    uid: string;
    conversationId: string;

@@ -6,8 +6,8 @@ function extractBearerToken(header?: string) {
       return null;
    }
 
-   const [scheme, token] = header.split(' ');
-   if (scheme !== 'Bearer' || !token) {
+   const [scheme, token] = header.trim().split(/\s+/);
+   if (scheme?.toLowerCase() !== 'bearer' || !token) {
       return null;
    }
    return token;

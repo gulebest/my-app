@@ -2,6 +2,7 @@ import { z } from 'zod';
 import OpenAI from 'openai';
 import { conversationRepository } from '../repository/conversation.repository';
 import type { ChatMessage } from '../repository/conversation.repository';
+import type { ConversationSummary } from '../repository/conversation.repository';
 
 const chatRequestSchema = z.object({
    prompt: z
@@ -36,28 +37,23 @@ export class ChatService {
       return chatRequestSchema.safeParse(body);
    }
 
-   getConversationKey(uid: string, conversationId: string) {
-      return `${uid}:${conversationId}`;
-   }
-
-   ensureConversation(conversationId: string | undefined, uid: string) {
+   ensureConversation(conversationId: string | undefined) {
       if (conversationId && conversationId.trim() !== '') {
-         const key = this.getConversationKey(uid, conversationId);
-         if (!conversationRepository.conversationExists(key)) {
-            return { error: 'Conversation not found' };
-         }
-         return { key, conversationId };
-      } else {
-         const newId = createConversationId();
-         const key = this.getConversationKey(uid, newId);
-         return { key, conversationId: newId };
+         return { conversationId };
       }
+
+      return { conversationId: createConversationId() };
    }
 
    async chat(prompt: string, conversationId: string, uid: string) {
-      const key = this.getConversationKey(uid, conversationId);
-      let conversation = conversationRepository.getConversation(key) ?? [];
-      conversation.push({ role: 'user', content: prompt });
+      const previousConversation = await conversationRepository.getConversation(
+         uid,
+         conversationId
+      );
+      const conversation: ChatMessage[] = [
+         ...previousConversation,
+         { role: 'user', content: prompt },
+      ];
 
       let response;
       try {
@@ -72,17 +68,28 @@ export class ChatService {
       }
 
       const message = response.choices?.[0]?.message?.content ?? '';
-      if (message) {
-         conversation.push({ role: 'assistant', content: message });
-      }
-      conversationRepository.saveConversation(key, conversation);
-      return { message };
+      const assistantMessage =
+         message.trim() || "I couldn't generate a response this time.";
+
+      await conversationRepository.appendTurn(
+         uid,
+         conversationId,
+         prompt,
+         assistantMessage
+      );
+
+      return { message: assistantMessage };
    }
 
    async *chatStream(prompt: string, conversationId: string, uid: string) {
-      const key = this.getConversationKey(uid, conversationId);
-      const conversation = conversationRepository.getConversation(key) ?? [];
-      conversation.push({ role: 'user', content: prompt });
+      const previousConversation = await conversationRepository.getConversation(
+         uid,
+         conversationId
+      );
+      const conversation: ChatMessage[] = [
+         ...previousConversation,
+         { role: 'user', content: prompt },
+      ];
 
       let stream;
       try {
@@ -107,9 +114,17 @@ export class ChatService {
          yield delta;
       }
 
-      if (fullMessage.trim().length > 0) {
-         conversation.push({ role: 'assistant', content: fullMessage });
-      }
-      conversationRepository.saveConversation(key, conversation);
+      const assistantMessage =
+         fullMessage.trim() || "I couldn't generate a response this time.";
+      await conversationRepository.appendTurn(
+         uid,
+         conversationId,
+         prompt,
+         assistantMessage
+      );
+   }
+
+   async listConversations(uid: string): Promise<ConversationSummary[]> {
+      return conversationRepository.listConversations(uid);
    }
 }

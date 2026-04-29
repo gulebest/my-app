@@ -52,7 +52,7 @@ export function ChatInputBar({ onSend, disabled = false }: ChatInputBarProps) {
 
    return (
       <form
-         className="relative mt-4 flex items-center gap-3 rounded-2xl border border-(--app-input-border) bg-[var(--app-input-bar-bg)] px-4 py-3 shadow-[0_10px_24px_rgba(10,12,30,0.35)]"
+         className="relative mt-3 flex items-center gap-1 rounded-2xl border border-(--app-input-border) bg-[var(--app-input-bar-bg)] px-2 py-2 shadow-[0_10px_24px_rgba(10,12,30,0.35)] sm:mt-4 sm:gap-3 sm:px-4 sm:py-3"
          onSubmit={async (e) => {
             e.preventDefault();
             const message = value.trim();
@@ -78,7 +78,7 @@ export function ChatInputBar({ onSend, disabled = false }: ChatInputBarProps) {
             <Paperclip className="h-5 w-5 text-(--app-text-muted)" />
          </button>
          <input
-            className="flex-1 bg-transparent px-2 text-(--app-text-strong) outline-none placeholder:text-(--app-text-muted)"
+            className="flex-1 bg-transparent px-1 text-sm text-(--app-text-strong) outline-none placeholder:text-(--app-text-muted) sm:px-2 sm:text-base"
             placeholder="Start typing"
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -109,10 +109,10 @@ export function ChatInputBar({ onSend, disabled = false }: ChatInputBarProps) {
          )}
          <button
             type="submit"
-            className="flex items-center gap-1 rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
+            className="flex items-center gap-1 rounded-xl bg-indigo-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 sm:px-4"
             disabled={disabled}
          >
-            <span className="hidden md:inline">
+            <span className="hidden sm:inline">
                {disabled ? 'Sending...' : 'Send'}
             </span>
             <Send className="ml-1 h-5 w-5" />

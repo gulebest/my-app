@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Bell, Sun, Moon, ChevronDown } from 'lucide-react';
+import { Bell, Sun, Moon, ChevronDown, Menu } from 'lucide-react';
 
-export function Topbar() {
+interface TopbarProps {
+   onMenuClick?: () => void;
+}
+
+export function Topbar({ onMenuClick }: TopbarProps) {
    const [dropdownOpen, setDropdownOpen] = useState(false);
    const [notificationsOpen, setNotificationsOpen] = useState(false);
    const [isLightTheme, setIsLightTheme] = useState(() => {
@@ -27,10 +31,18 @@ export function Topbar() {
    };
 
    return (
-      <header className="relative flex h-16 items-center justify-between border-b border-[var(--app-divider)] bg-[var(--app-header-bg)] px-6 md:px-8">
+      <header className="relative flex h-16 items-center justify-between border-b border-[var(--app-divider)] bg-[var(--app-header-bg)] px-4 sm:px-6 md:px-8">
          {/* App Title and Dropdown */}
-         <div className="flex items-center gap-3 relative">
-            <span className="text-lg font-semibold text-(--app-text-strong)">
+         <div className="relative flex items-center gap-2 sm:gap-3">
+            <button
+               type="button"
+               className="rounded-lg p-2 transition hover:bg-[var(--app-soft-surface)] lg:hidden"
+               onClick={onMenuClick}
+               aria-label="Open sidebar"
+            >
+               <Menu className="h-5 w-5 text-(--app-text-muted)" />
+            </button>
+            <span className="text-base font-semibold text-(--app-text-strong) sm:text-lg">
                Messaging app
             </span>
             <button
@@ -61,7 +73,7 @@ export function Topbar() {
             )}
          </div>
          {/* Actions */}
-         <div className="flex items-center gap-4 relative">
+         <div className="relative flex items-center gap-2 sm:gap-4">
             <button
                className="relative rounded-full bg-[var(--app-soft-surface)] p-2 transition hover:opacity-85"
                onClick={handleNotifications}

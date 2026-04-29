@@ -94,7 +94,7 @@ export function ChatMessage({
       >
          <div
             className={cn(
-               'max-w-[70%] rounded-2xl px-4 py-2 text-sm',
+               'max-w-[88%] rounded-2xl px-3 py-2 text-sm sm:max-w-[78%] sm:px-4',
                role === 'user'
                   ? 'rounded-br-md bg-indigo-500 text-white'
                   : 'rounded-bl-md bg-[var(--app-assistant-bubble)] text-(--app-text-strong)'

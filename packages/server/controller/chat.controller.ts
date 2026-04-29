@@ -16,12 +16,8 @@ export const chatHandler = async (req: Request, res: Response) => {
    const { prompt, conversationId } = parsed.data;
    const uid = req.authUser?.uid ?? 'anonymous';
 
-   // Conversation existence/creation logic
-   const convoResult = chatService.ensureConversation(conversationId, uid);
-   if ('error' in convoResult) {
-      return res.status(404).json({ error: convoResult.error });
-   }
-   const { conversationId: resolvedId } = convoResult;
+   const { conversationId: resolvedId } =
+      chatService.ensureConversation(conversationId);
 
    try {
       const { message } = await chatService.chat(prompt, resolvedId, uid);
@@ -51,12 +47,8 @@ export const chatStreamHandler = async (req: Request, res: Response) => {
 
    const { prompt, conversationId } = parsed.data;
    const uid = req.authUser?.uid ?? 'anonymous';
-   const convoResult = chatService.ensureConversation(conversationId, uid);
-   if ('error' in convoResult) {
-      return res.status(404).json({ error: convoResult.error });
-   }
-
-   const { conversationId: resolvedId } = convoResult;
+   const { conversationId: resolvedId } =
+      chatService.ensureConversation(conversationId);
 
    res.setHeader('Content-Type', 'text/event-stream');
    res.setHeader('Cache-Control', 'no-cache');
@@ -115,5 +107,22 @@ export const chatStreamHandler = async (req: Request, res: Response) => {
       if (!isClientClosed) {
          res.end();
       }
+   }
+};
+
+export const listConversationsHandler = async (req: Request, res: Response) => {
+   const uid = req.authUser?.uid;
+   if (!uid) {
+      return res.status(401).json({ error: 'Unauthorized' });
+   }
+
+   try {
+      const conversations = await chatService.listConversations(uid);
+      return res.json({ conversations });
+   } catch (err) {
+      return res.status(500).json({
+         error: 'Failed to load conversations',
+         details: err instanceof Error ? err.message : err,
+      });
    }
 };
