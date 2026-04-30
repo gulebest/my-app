@@ -65,6 +65,28 @@ function createLocalMessageId(prefix: 'assistant' | 'user') {
    return `${prefix}-${Date.now()}-${localMessageCounter}`;
 }
 
+function wait(ms: number) {
+   return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+   });
+}
+
+function hasPreviousUserMessage(
+   items: ChatMessageProps[],
+   assistantIndex: number
+): boolean {
+   for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+      if (
+         items[index].role === 'user' &&
+         items[index].content.trim().length > 0
+      ) {
+         return true;
+      }
+   }
+
+   return false;
+}
+
 function getGuestQuestionCount() {
    try {
       const raw = window.localStorage.getItem(GUEST_COUNT_KEY);
@@ -379,6 +401,38 @@ export function ChatThread({
       }
    };
 
+   const animateAssistantMessage = async (
+      messageId: string,
+      fullText: string
+   ) => {
+      if (!fullText.trim()) {
+         setMessages((current) =>
+            current.map((item) =>
+               item.id === messageId ? { ...item, content: fullText } : item
+            )
+         );
+         return;
+      }
+
+      const chunkSize =
+         fullText.length > 240 ? 8 : fullText.length > 120 ? 5 : 3;
+      for (let index = chunkSize; index < fullText.length; index += chunkSize) {
+         const nextSlice = fullText.slice(0, index);
+         setMessages((current) =>
+            current.map((item) =>
+               item.id === messageId ? { ...item, content: nextSlice } : item
+            )
+         );
+         await wait(18);
+      }
+
+      setMessages((current) =>
+         current.map((item) =>
+            item.id === messageId ? { ...item, content: fullText } : item
+         )
+      );
+   };
+
    useEffect(() => {
       let cancelled = false;
 
@@ -503,12 +557,27 @@ export function ChatThread({
       };
    }, [isHistoryLoading, messages]);
 
-   const handleSend = async (msg: string) => {
+   const sendPrompt = async (
+      msg: string,
+      options?: {
+         appendUserMessage?: boolean;
+         countAsQuestion?: boolean;
+         replaceAssistantMessageId?: string;
+      }
+   ) => {
+      const appendUserMessage = options?.appendUserMessage ?? true;
+      const countAsQuestion = options?.countAsQuestion ?? appendUserMessage;
+      const replaceAssistantMessageId = options?.replaceAssistantMessageId;
+
       if (isSending || isHistoryLoading) {
          return;
       }
 
-      if (!currentUserId && guestQuestionsAsked >= GUEST_LIMIT) {
+      if (
+         appendUserMessage &&
+         !currentUserId &&
+         guestQuestionsAsked >= GUEST_LIMIT
+      ) {
          setError(
             'Guest limit reached (20 questions). Please sign in or create an account to continue.'
          );
@@ -535,34 +604,88 @@ export function ChatThread({
 
       setError(null);
       const streamingAssistantMessageId = createLocalMessageId('assistant');
-      setMessages((current) => [
-         ...current,
-         {
-            id: createLocalMessageId('user'),
-            role: 'user',
-            content: msg,
-            createdAt: new Date().toISOString(),
-         },
-         {
-            id: streamingAssistantMessageId,
-            role: 'assistant',
-            content: '',
-            createdAt: new Date().toISOString(),
-         },
-      ]);
-      setIsSending(true);
-      onQuestionAsked();
+      setMessages((current) => {
+         if (replaceAssistantMessageId) {
+            return current.map((item) =>
+               item.id === replaceAssistantMessageId
+                  ? {
+                       ...item,
+                       id: streamingAssistantMessageId,
+                       content: '',
+                       createdAt: new Date().toISOString(),
+                    }
+                  : item
+            );
+         }
 
-      if (!currentUserId) {
+         return [
+            ...current,
+            {
+               id: createLocalMessageId('user'),
+               role: 'user',
+               content: msg,
+               createdAt: new Date().toISOString(),
+            },
+            {
+               id: streamingAssistantMessageId,
+               role: 'assistant',
+               content: '',
+               createdAt: new Date().toISOString(),
+            },
+         ];
+      });
+      setIsSending(true);
+      if (countAsQuestion) {
+         onQuestionAsked();
+      }
+
+      if (countAsQuestion && !currentUserId) {
          const nextCount = guestQuestionsAsked + 1;
          setGuestQuestionsAsked(nextCount);
          setGuestQuestionCount(nextCount);
       }
 
       try {
+         let result: ChatApiResponse;
+
+         if (!currentUserId) {
+            result = await requestChatReply(
+               msg,
+               conversationId,
+               undefined,
+               currentProjectId,
+               pendingTemplateRun
+            );
+
+            const assistantContent =
+               result.message?.trim() ||
+               "I couldn't generate a response this time.";
+
+            setConversationId(result.conversationId);
+            if (pendingTemplateRun) {
+               onTemplateRunAttached?.();
+            }
+            await animateAssistantMessage(
+               streamingAssistantMessageId,
+               assistantContent
+            );
+            setMessages((current) =>
+               current.map((item) =>
+                  item.id === streamingAssistantMessageId
+                     ? {
+                          ...item,
+                          content: assistantContent,
+                          createdAt: new Date().toISOString(),
+                       }
+                     : item
+               )
+            );
+            playResponseSound();
+            return;
+         }
+
          const abortController = new AbortController();
          streamAbortRef.current = abortController;
-         let result: ChatApiResponse;
 
          try {
             result = await requestChatReplyStream(msg, conversationId, {
@@ -701,6 +824,49 @@ export function ChatThread({
       }
    };
 
+   const handleSend = async (msg: string) => {
+      await sendPrompt(msg);
+   };
+
+   const handleRetry = async (assistantMessageId: string) => {
+      const assistantIndex = messages.findIndex(
+         (item) => item.id === assistantMessageId
+      );
+      if (assistantIndex < 0) {
+         return;
+      }
+
+      let promptToRetry: string | null = null;
+      for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+         const candidate = messages[index];
+         if (candidate.role === 'user' && candidate.content.trim().length > 0) {
+            promptToRetry = candidate.content;
+            break;
+         }
+      }
+
+      if (!promptToRetry) {
+         return;
+      }
+
+      await sendPrompt(promptToRetry, {
+         appendUserMessage: false,
+         countAsQuestion: false,
+         replaceAssistantMessageId: assistantMessageId,
+      });
+   };
+
+   const latestAssistantMessageId = useMemo(() => {
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+         const item = messages[index];
+         if (item.role === 'assistant') {
+            return item.id || null;
+         }
+      }
+
+      return null;
+   }, [messages]);
+
    return (
       <div className="flex min-h-0 flex-1 flex-col">
          <div
@@ -714,6 +880,18 @@ export function ChatThread({
                   showTimestamp={showTimestamps}
                   fontSize={chatFontSize}
                   bubbleWidth={bubbleWidth}
+                  showActions={msg.role === 'assistant'}
+                  canRetry={
+                     !isSending &&
+                     msg.role === 'assistant' &&
+                     msg.id === latestAssistantMessageId &&
+                     hasPreviousUserMessage(messages, i)
+                  }
+                  onRetry={() => {
+                     if (msg.id) {
+                        void handleRetry(msg.id);
+                     }
+                  }}
                />
             ))}
             <div ref={scrollAnchorRef} aria-hidden="true" />
