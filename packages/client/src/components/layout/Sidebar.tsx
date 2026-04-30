@@ -11,14 +11,13 @@ import {
    LogOut,
    X,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import cn from 'clsx';
 import { navigateTo } from '../../lib/navigation';
 import type { AuthUser } from '../../lib/auth-storage';
 import type { ConversationSummary } from '../../lib/conversation-history-api';
+import type { ProjectWorkspace } from '../../lib/project-workspaces';
 
-const openSettings = () => alert('Settings modal would open.');
-const openUpdates = () => alert('Updates & FAQ modal would open.');
 const upgradeToPro = () => {
    window.open(
       'https://your-upgrade-link.com',
@@ -36,6 +35,10 @@ interface SidebarProps {
    activeConversationId: string | null;
    onSelectConversation: (conversationId: string) => void;
    onNewConversation: () => void;
+   onOpenSettings: () => void;
+   onOpenHelp: () => void;
+   projects: ProjectWorkspace[];
+   selectedProjectId: string | null;
    className?: string;
    onClose?: () => void;
 }
@@ -68,15 +71,49 @@ export function Sidebar({
    activeConversationId,
    onSelectConversation,
    onNewConversation,
+   onOpenSettings,
+   onOpenHelp,
+   projects,
+   selectedProjectId,
    className,
    onClose,
 }: SidebarProps) {
-   const [templatesOpen, setTemplatesOpen] = useState(false);
-
    const handleRoute = (path: string) => {
       navigateTo(path);
       onClose?.();
    };
+
+   const pathname = window.location.pathname;
+   const activeProject = selectedProjectId
+      ? projects.find((item) => item.id === selectedProjectId) || null
+      : null;
+   const groupedHistory = useMemo(() => {
+      const groups = new Map<
+         string,
+         { label: string; items: ConversationSummary[] }
+      >();
+
+      for (const item of historyItems) {
+         const groupKey = item.projectId || '__none__';
+         if (!groups.has(groupKey)) {
+            const projectName = item.projectId
+               ? projects.find((project) => project.id === item.projectId)
+                    ?.name || 'Unknown project'
+               : 'General chats';
+            groups.set(groupKey, {
+               label: projectName,
+               items: [],
+            });
+         }
+         groups.get(groupKey)?.items.push(item);
+      }
+
+      return [...groups.entries()].map(([key, value]) => ({
+         key,
+         label: value.label,
+         items: value.items,
+      }));
+   }, [historyItems, projects]);
 
    return (
       <aside
@@ -117,7 +154,7 @@ export function Sidebar({
                icon={<MessageCircle />}
                label="Chat Helper"
                onClick={() => handleRoute('/chat')}
-               active={window.location.pathname === '/chat'}
+               active={pathname === '/chat'}
             />
             <SidebarItem
                icon={<Plus />}
@@ -130,35 +167,20 @@ export function Sidebar({
             <SidebarItem
                icon={<Plus />}
                label="Templates"
-               expandable
-               expanded={templatesOpen}
-               onClick={() => setTemplatesOpen((open) => !open)}
+               onClick={() => handleRoute('/templates')}
+               active={pathname === '/templates'}
             />
-            {templatesOpen && (
-               <div className="ml-8 flex flex-col gap-1 text-sm text-(--app-text-muted)">
-                  <button
-                     className="text-left hover:text-indigo-400"
-                     onClick={() => alert('Template 1 selected')}
-                  >
-                     Template 1
-                  </button>
-                  <button
-                     className="text-left hover:text-indigo-400"
-                     onClick={() => alert('Template 2 selected')}
-                  >
-                     Template 2
-                  </button>
-               </div>
-            )}
             <SidebarItem
                icon={<Folder />}
                label="My projects"
                onClick={() => handleRoute('/projects')}
+               active={pathname === '/projects'}
             />
             <SidebarItem
                icon={<BarChart />}
                label="Statistics"
                onClick={() => handleRoute('/stats')}
+               active={pathname === '/stats'}
             />
          </nav>
 
@@ -166,6 +188,11 @@ export function Sidebar({
             <div className="mb-2 text-xs text-(--app-text-muted)">
                CONVERSATION HISTORY
             </div>
+            {activeProject && (
+               <div className="mb-2 rounded-lg border border-[var(--app-card-border)] bg-[var(--app-card-bg)] px-2 py-1 text-[11px] text-(--app-text-muted)">
+                  Project: {activeProject.name}
+               </div>
+            )}
             {currentUser ? (
                <div className="app-scroll max-h-52 space-y-2 overflow-y-auto pr-1">
                   {historyLoading ? (
@@ -177,33 +204,42 @@ export function Sidebar({
                         No saved conversations yet.
                      </p>
                   ) : (
-                     historyItems.map((item) => (
-                        <button
-                           key={item.conversationId}
-                           type="button"
-                           onClick={() => {
-                              onSelectConversation(item.conversationId);
-                              onClose?.();
-                           }}
-                           className={cn(
-                              'w-full rounded-xl border px-3 py-2 text-left transition',
-                              item.conversationId === activeConversationId
-                                 ? 'border-indigo-400 bg-indigo-500/15'
-                                 : 'border-[var(--app-card-border)] bg-[var(--app-card-bg)] hover:bg-[var(--app-soft-surface)]'
+                     groupedHistory.map((group) => (
+                        <div key={group.key} className="space-y-2">
+                           {!selectedProjectId && (
+                              <p className="px-1 text-[10px] uppercase tracking-wide text-(--app-text-muted)">
+                                 {group.label}
+                              </p>
                            )}
-                        >
-                           <p className="truncate text-xs font-semibold text-(--app-text-strong)">
-                              {item.title || 'New conversation'}
-                           </p>
-                           <p className="truncate text-[11px] text-(--app-text-muted)">
-                              {item.lastMessage || 'No messages yet'}
-                           </p>
-                           <p className="mt-1 text-[10px] text-(--app-text-muted)">
-                              {formatHistoryTime(
-                                 item.updatedAt || item.createdAt
-                              )}
-                           </p>
-                        </button>
+                           {group.items.map((item) => (
+                              <button
+                                 key={item.conversationId}
+                                 type="button"
+                                 onClick={() => {
+                                    onSelectConversation(item.conversationId);
+                                    onClose?.();
+                                 }}
+                                 className={cn(
+                                    'w-full rounded-xl border px-3 py-2 text-left transition',
+                                    item.conversationId === activeConversationId
+                                       ? 'border-indigo-400 bg-indigo-500/15'
+                                       : 'border-[var(--app-card-border)] bg-[var(--app-card-bg)] hover:bg-[var(--app-soft-surface)]'
+                                 )}
+                              >
+                                 <p className="truncate text-xs font-semibold text-(--app-text-strong)">
+                                    {item.title || 'New conversation'}
+                                 </p>
+                                 <p className="truncate text-[11px] text-(--app-text-muted)">
+                                    {item.lastMessage || 'No messages yet'}
+                                 </p>
+                                 <p className="mt-1 text-[10px] text-(--app-text-muted)">
+                                    {formatHistoryTime(
+                                       item.updatedAt || item.createdAt
+                                    )}
+                                 </p>
+                              </button>
+                           ))}
+                        </div>
                      ))
                   )}
                </div>
@@ -222,7 +258,7 @@ export function Sidebar({
                icon={<Settings />}
                label="Settings"
                onClick={() => {
-                  openSettings();
+                  onOpenSettings();
                   onClose?.();
                }}
             />
@@ -230,7 +266,7 @@ export function Sidebar({
                icon={<Bell />}
                label="Updates & FAQ"
                onClick={() => {
-                  openUpdates();
+                  onOpenHelp();
                   onClose?.();
                }}
             />

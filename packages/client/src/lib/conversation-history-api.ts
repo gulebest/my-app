@@ -2,6 +2,10 @@ export interface ConversationSummary {
    conversationId: string;
    title: string;
    lastMessage: string;
+   projectId: string | null;
+   lastTemplateId?: string | null;
+   lastTemplateTitle?: string | null;
+   lastTemplateVersion?: number | null;
    createdAt: string | null;
    updatedAt: string | null;
 }
@@ -21,9 +25,11 @@ export class ApiRequestError extends Error {
 }
 
 export async function fetchConversationHistory(
-   idToken: string
+   idToken: string,
+   projectId?: string | null
 ): Promise<ConversationSummary[]> {
-   const response = await fetch('/api/conversations', {
+   const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+   const response = await fetch(`/api/conversations${query}`, {
       headers: {
          Authorization: `Bearer ${idToken}`,
       },

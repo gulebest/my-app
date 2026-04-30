@@ -107,6 +107,21 @@ export async function signOut() {
    await firebaseSignOut(auth);
 }
 
+export async function updateAccountProfile(payload: { fullName: string }) {
+   const user = auth.currentUser;
+   if (!user) {
+      throw new Error('No active session');
+   }
+
+   const fullName = payload.fullName.trim();
+   if (!fullName) {
+      throw new Error('Full name is required');
+   }
+
+   await updateProfile(user, { displayName: fullName });
+   return ensureUserProfile(user, fullName);
+}
+
 export function getSessionUser() {
    return null;
 }

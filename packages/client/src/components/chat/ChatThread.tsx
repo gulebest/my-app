@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChatMessage, type ChatMessageProps } from './ChatMessage';
 import { ChatInputBar } from './ChatInputBar';
 import type { AuthUser } from '../../lib/auth-storage';
@@ -8,22 +8,42 @@ import {
 } from '../../lib/firestore-chat';
 import { auth } from '../../lib/firebase';
 import { isFirestorePermissionDenied } from '../../lib/firebase-errors';
+import type { ChatFontSize } from '../../lib/app-settings';
 
 interface ChatApiResponse {
    message: string;
    conversationId: string;
 }
 
+interface TemplateRunPayload {
+   templateId?: string;
+   templateTitle?: string;
+   templateVersion?: number;
+}
+
 interface ChatThreadProps {
    currentUser: AuthUser | null;
+   currentProjectId?: string | null;
    activeConversationId: string | null;
    shouldLoadLatestConversation: boolean;
    onConversationResolved: (conversationId: string) => void;
    onConversationUpdated: () => void;
+   enterToSend: boolean;
+   showTimestamps: boolean;
+   chatFontSize: ChatFontSize;
+   bubbleWidth: number;
+   soundOnResponse: boolean;
+   muteAllNotifications: boolean;
+   onQuestionAsked: () => void;
+   prefillMessage?: string;
+   prefillNonce?: number;
+   pendingTemplateRun?: TemplateRunPayload | null;
+   onTemplateRunAttached?: () => void;
 }
 
 const initialMessages: ChatMessageProps[] = [
    {
+      id: 'assistant-welcome',
       role: 'assistant',
       content: 'Hi! Ask me anything and I will respond using the live backend.',
    },
@@ -31,6 +51,13 @@ const initialMessages: ChatMessageProps[] = [
 
 const GUEST_LIMIT = 20;
 const GUEST_COUNT_KEY = 'assistly-guest-question-count';
+const AUTO_SCROLL_BOTTOM_THRESHOLD = 120;
+let localMessageCounter = 0;
+
+function createLocalMessageId(prefix: 'assistant' | 'user') {
+   localMessageCounter += 1;
+   return `${prefix}-${Date.now()}-${localMessageCounter}`;
+}
 
 function getGuestQuestionCount() {
    try {
@@ -57,7 +84,9 @@ function safeParseJson(payload: string): unknown {
 async function requestChatReply(
    prompt: string,
    conversationId: string,
-   idToken?: string
+   idToken?: string,
+   projectId?: string | null,
+   templateRun?: TemplateRunPayload | null
 ): Promise<ChatApiResponse> {
    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -71,7 +100,12 @@ async function requestChatReply(
       response = await fetch('/api/chat', {
          method: 'POST',
          headers,
-         body: JSON.stringify({ prompt, conversationId }),
+         body: JSON.stringify({
+            prompt,
+            conversationId,
+            projectId: projectId || undefined,
+            templateRun: templateRun || undefined,
+         }),
       });
    } catch {
       throw new Error(
@@ -111,10 +145,22 @@ async function requestChatReply(
 
 export function ChatThread({
    currentUser,
+   currentProjectId,
    activeConversationId,
    shouldLoadLatestConversation,
    onConversationResolved,
    onConversationUpdated,
+   enterToSend,
+   showTimestamps,
+   chatFontSize,
+   bubbleWidth,
+   soundOnResponse,
+   muteAllNotifications,
+   onQuestionAsked,
+   prefillMessage,
+   prefillNonce,
+   pendingTemplateRun,
+   onTemplateRunAttached,
 }: ChatThreadProps) {
    const [messages, setMessages] = useState(initialMessages);
    const [conversationId, setConversationId] = useState('');
@@ -124,8 +170,66 @@ export function ChatThread({
    const [guestQuestionsAsked, setGuestQuestionsAsked] = useState(() =>
       getGuestQuestionCount()
    );
+   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
+   const lastAutoScrollMessageCountRef = useRef(0);
+   const shouldStickToBottomRef = useRef(true);
 
    const currentUserId = useMemo(() => currentUser?.uid || null, [currentUser]);
+
+   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+      const viewport = scrollViewportRef.current;
+      if (!viewport) {
+         return;
+      }
+
+      if (scrollAnchorRef.current) {
+         scrollAnchorRef.current.scrollIntoView({
+            behavior,
+            block: 'end',
+         });
+         return;
+      }
+
+      viewport.scrollTo({
+         top: viewport.scrollHeight,
+         behavior,
+      });
+   };
+
+   const updateShouldStickToBottom = () => {
+      const viewport = scrollViewportRef.current;
+      if (!viewport) {
+         shouldStickToBottomRef.current = true;
+         return;
+      }
+
+      const distanceFromBottom =
+         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      shouldStickToBottomRef.current =
+         distanceFromBottom <= AUTO_SCROLL_BOTTOM_THRESHOLD;
+   };
+
+   const playResponseSound = () => {
+      if (!soundOnResponse || muteAllNotifications) {
+         return;
+      }
+
+      try {
+         const audioContext = new window.AudioContext();
+         const oscillator = audioContext.createOscillator();
+         const gainNode = audioContext.createGain();
+         oscillator.type = 'sine';
+         oscillator.frequency.value = 880;
+         gainNode.gain.value = 0.03;
+         oscillator.connect(gainNode);
+         gainNode.connect(audioContext.destination);
+         oscillator.start();
+         oscillator.stop(audioContext.currentTime + 0.08);
+      } catch {
+         // ignore audio errors
+      }
+   };
 
    useEffect(() => {
       let cancelled = false;
@@ -144,7 +248,7 @@ export function ChatThread({
             const loaded = activeConversationId
                ? await loadConversationById(currentUserId, activeConversationId)
                : shouldLoadLatestConversation
-                 ? await loadLatestConversation(currentUserId)
+                 ? await loadLatestConversation(currentUserId, currentProjectId)
                  : null;
 
             if (cancelled) {
@@ -197,7 +301,53 @@ export function ChatThread({
       currentUserId,
       onConversationResolved,
       shouldLoadLatestConversation,
+      currentProjectId,
    ]);
+
+   useEffect(() => {
+      const viewport = scrollViewportRef.current;
+      if (!viewport) {
+         return;
+      }
+
+      updateShouldStickToBottom();
+      const handleScroll = () => {
+         updateShouldStickToBottom();
+      };
+
+      viewport.addEventListener('scroll', handleScroll, { passive: true });
+
+      return () => {
+         viewport.removeEventListener('scroll', handleScroll);
+      };
+   }, []);
+
+   useEffect(() => {
+      if (isHistoryLoading) {
+         return;
+      }
+
+      const nextMessageCount = messages.length;
+      const shouldAutoScroll =
+         shouldStickToBottomRef.current ||
+         nextMessageCount <= 1 ||
+         lastAutoScrollMessageCountRef.current === 0;
+
+      lastAutoScrollMessageCountRef.current = nextMessageCount;
+      if (!shouldAutoScroll) {
+         return;
+      }
+
+      const shouldAnimate = nextMessageCount > 1;
+      const frame = window.requestAnimationFrame(() => {
+         scrollToBottom(shouldAnimate ? 'smooth' : 'auto');
+         shouldStickToBottomRef.current = true;
+      });
+
+      return () => {
+         window.cancelAnimationFrame(frame);
+      };
+   }, [isHistoryLoading, messages]);
 
    const handleSend = async (msg: string) => {
       if (isSending || isHistoryLoading) {
@@ -211,6 +361,7 @@ export function ChatThread({
          setMessages((current) => [
             ...current,
             {
+               id: createLocalMessageId('assistant'),
                role: 'assistant',
                content:
                   'You have reached the 20-question guest limit. Please sign in or create an account to continue.',
@@ -229,8 +380,17 @@ export function ChatThread({
       }
 
       setError(null);
-      setMessages((current) => [...current, { role: 'user', content: msg }]);
+      setMessages((current) => [
+         ...current,
+         {
+            id: createLocalMessageId('user'),
+            role: 'user',
+            content: msg,
+            createdAt: new Date().toISOString(),
+         },
+      ]);
       setIsSending(true);
+      onQuestionAsked();
 
       if (!currentUserId) {
          const nextCount = guestQuestionsAsked + 1;
@@ -242,7 +402,13 @@ export function ChatThread({
          let result: ChatApiResponse;
 
          try {
-            result = await requestChatReply(msg, conversationId, idToken);
+            result = await requestChatReply(
+               msg,
+               conversationId,
+               idToken,
+               currentProjectId,
+               pendingTemplateRun
+            );
          } catch (err) {
             const isMissingConversation =
                err instanceof Error &&
@@ -253,7 +419,13 @@ export function ChatThread({
                throw err;
             }
 
-            result = await requestChatReply(msg, '', idToken);
+            result = await requestChatReply(
+               msg,
+               '',
+               idToken,
+               currentProjectId,
+               pendingTemplateRun
+            );
          }
 
          const assistantContent =
@@ -265,13 +437,19 @@ export function ChatThread({
             onConversationResolved(result.conversationId);
             onConversationUpdated();
          }
+         if (pendingTemplateRun) {
+            onTemplateRunAttached?.();
+         }
          setMessages((current) => [
             ...current,
             {
+               id: createLocalMessageId('assistant'),
                role: 'assistant',
                content: assistantContent,
+               createdAt: new Date().toISOString(),
             },
          ]);
+         playResponseSound();
       } catch (err) {
          const message =
             err instanceof Error
@@ -282,9 +460,11 @@ export function ChatThread({
          setMessages((current) => [
             ...current,
             {
+               id: createLocalMessageId('assistant'),
                role: 'assistant',
                content:
                   'I hit a server issue while answering. Please try again in a moment.',
+               createdAt: new Date().toISOString(),
             },
          ]);
       } finally {
@@ -294,10 +474,20 @@ export function ChatThread({
 
    return (
       <div className="flex min-h-0 flex-1 flex-col">
-         <div className="app-scroll min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
+         <div
+            ref={scrollViewportRef}
+            className="app-scroll min-h-0 flex-1 overflow-y-auto pb-4 pr-1"
+         >
             {messages.map((msg, i) => (
-               <ChatMessage key={i} {...msg} />
+               <ChatMessage
+                  key={msg.id || `${msg.role}-${msg.createdAt || i}-${i}`}
+                  {...msg}
+                  showTimestamp={showTimestamps}
+                  fontSize={chatFontSize}
+                  bubbleWidth={bubbleWidth}
+               />
             ))}
+            <div ref={scrollAnchorRef} aria-hidden="true" />
          </div>
          {error && (
             <p className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -305,8 +495,11 @@ export function ChatThread({
             </p>
          )}
          <ChatInputBar
+            key={`chat-input-${prefillNonce || 0}`}
             onSend={handleSend}
             disabled={isSending || isHistoryLoading}
+            enterToSend={enterToSend}
+            initialValue={prefillMessage}
          />
       </div>
    );

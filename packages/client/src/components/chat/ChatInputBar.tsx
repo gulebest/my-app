@@ -4,6 +4,8 @@ import { useRef, useState, type ChangeEvent } from 'react';
 interface ChatInputBarProps {
    onSend: (message: string) => Promise<void> | void;
    disabled?: boolean;
+   enterToSend?: boolean;
+   initialValue?: string;
 }
 
 const EMOJIS = [
@@ -25,8 +27,13 @@ const EMOJIS = [
    '\u{1F680}',
 ];
 
-export function ChatInputBar({ onSend, disabled = false }: ChatInputBarProps) {
-   const [value, setValue] = useState('');
+export function ChatInputBar({
+   onSend,
+   disabled = false,
+   enterToSend = true,
+   initialValue = '',
+}: ChatInputBarProps) {
+   const [value, setValue] = useState(initialValue);
    const [showEmoji, setShowEmoji] = useState(false);
    const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,11 +84,24 @@ export function ChatInputBar({ onSend, disabled = false }: ChatInputBarProps) {
          >
             <Paperclip className="h-5 w-5 text-(--app-text-muted)" />
          </button>
-         <input
-            className="flex-1 bg-transparent px-1 text-sm text-(--app-text-strong) outline-none placeholder:text-(--app-text-muted) sm:px-2 sm:text-base"
+         <textarea
+            className="max-h-32 min-h-[32px] flex-1 resize-none bg-transparent px-1 py-1 text-sm text-(--app-text-strong) outline-none placeholder:text-(--app-text-muted) sm:px-2 sm:text-base"
             placeholder="Start typing"
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+               if (!enterToSend) {
+                  return;
+               }
+               if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  const message = value.trim();
+                  if (message && !disabled) {
+                     void onSend(message);
+                     setValue('');
+                  }
+               }
+            }}
             disabled={disabled}
          />
          <button

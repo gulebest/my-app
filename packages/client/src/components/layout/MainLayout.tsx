@@ -3,6 +3,8 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import type { AuthUser } from '../../lib/auth-storage';
 import type { ConversationSummary } from '../../lib/conversation-history-api';
+import type { ThemeMode } from '../../lib/app-settings';
+import type { ProjectWorkspace } from '../../lib/project-workspaces';
 
 interface MainLayoutProps {
    children: React.ReactNode;
@@ -15,6 +17,16 @@ interface MainLayoutProps {
    activeConversationId: string | null;
    onSelectConversation: (conversationId: string) => void;
    onNewConversation: () => void;
+   onOpenSettings: () => void;
+   onOpenHelp: () => void;
+   themeMode: ThemeMode;
+   onCycleTheme: () => void;
+   inAppNotifications: boolean;
+   muteAllNotifications: boolean;
+   projects: ProjectWorkspace[];
+   selectedProjectId: string | null;
+   onSelectProject: (projectId: string | null) => void;
+   onOpenProjects: () => void;
 }
 
 export function MainLayout({
@@ -28,6 +40,16 @@ export function MainLayout({
    activeConversationId,
    onSelectConversation,
    onNewConversation,
+   onOpenSettings,
+   onOpenHelp,
+   themeMode,
+   onCycleTheme,
+   inAppNotifications,
+   muteAllNotifications,
+   projects,
+   selectedProjectId,
+   onSelectProject,
+   onOpenProjects,
 }: MainLayoutProps) {
    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -45,6 +67,10 @@ export function MainLayout({
                   activeConversationId={activeConversationId}
                   onSelectConversation={onSelectConversation}
                   onNewConversation={onNewConversation}
+                  onOpenSettings={onOpenSettings}
+                  onOpenHelp={onOpenHelp}
+                  projects={projects}
+                  selectedProjectId={selectedProjectId}
                />
             </div>
 
@@ -67,6 +93,10 @@ export function MainLayout({
                         activeConversationId={activeConversationId}
                         onSelectConversation={onSelectConversation}
                         onNewConversation={onNewConversation}
+                        onOpenSettings={onOpenSettings}
+                        onOpenHelp={onOpenHelp}
+                        projects={projects}
+                        selectedProjectId={selectedProjectId}
                         className="w-full border-r border-[var(--app-divider)] shadow-[0_18px_44px_rgba(0,0,0,0.35)]"
                         onClose={() => setMobileSidebarOpen(false)}
                      />
@@ -75,7 +105,18 @@ export function MainLayout({
             )}
 
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-               <Topbar onMenuClick={() => setMobileSidebarOpen(true)} />
+               <Topbar
+                  onMenuClick={() => setMobileSidebarOpen(true)}
+                  themeMode={themeMode}
+                  onCycleTheme={onCycleTheme}
+                  inAppNotifications={inAppNotifications}
+                  muteAllNotifications={muteAllNotifications}
+                  onOpenSettings={onOpenSettings}
+                  projects={projects}
+                  selectedProjectId={selectedProjectId}
+                  onSelectProject={onSelectProject}
+                  onOpenProjects={onOpenProjects}
+               />
                <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 sm:p-4 md:p-6">
                   {children}
                </main>

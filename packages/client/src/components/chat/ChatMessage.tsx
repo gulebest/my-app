@@ -3,8 +3,13 @@ import { Copy } from 'lucide-react';
 import cn from 'clsx';
 
 export interface ChatMessageProps {
+   id?: string;
    role: 'user' | 'assistant';
    content: string;
+   createdAt?: string | null;
+   showTimestamp?: boolean;
+   fontSize?: 'small' | 'medium' | 'large';
+   bubbleWidth?: number;
    codeBlock?: boolean;
    codeLanguage?: string;
    codeTabs?: string[];
@@ -15,6 +20,10 @@ export interface ChatMessageProps {
 export function ChatMessage({
    role,
    content,
+   createdAt,
+   showTimestamp,
+   fontSize = 'medium',
+   bubbleWidth = 78,
    codeBlock,
    codeLanguage,
    codeTabs,
@@ -94,13 +103,34 @@ export function ChatMessage({
       >
          <div
             className={cn(
-               'max-w-[88%] rounded-2xl px-3 py-2 text-sm sm:max-w-[78%] sm:px-4',
+               'rounded-2xl px-3 py-2 sm:px-4',
+               fontSize === 'small'
+                  ? 'text-xs sm:text-sm'
+                  : fontSize === 'large'
+                    ? 'text-base sm:text-lg'
+                    : 'text-sm sm:text-base',
                role === 'user'
                   ? 'rounded-br-md bg-indigo-500 text-white'
                   : 'rounded-bl-md bg-[var(--app-assistant-bubble)] text-(--app-text-strong)'
             )}
+            style={{ maxWidth: `${bubbleWidth}%` }}
          >
             {content}
+            {showTimestamp && createdAt && (
+               <div
+                  className={cn(
+                     'mt-1 text-[10px]',
+                     role === 'user'
+                        ? 'text-indigo-100'
+                        : 'text-(--app-text-muted)'
+                  )}
+               >
+                  {new Date(createdAt).toLocaleTimeString([], {
+                     hour: 'numeric',
+                     minute: '2-digit',
+                  })}
+               </div>
+            )}
          </div>
       </div>
    );

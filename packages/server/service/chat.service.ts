@@ -3,6 +3,12 @@ import OpenAI from 'openai';
 import { conversationRepository } from '../repository/conversation.repository';
 import type { ChatMessage } from '../repository/conversation.repository';
 import type { ConversationSummary } from '../repository/conversation.repository';
+import type { ConversationExportItem } from '../repository/conversation.repository';
+import { firebaseAdminAuth } from '../lib/firebase-admin';
+import {
+   analyticsRepository,
+   type AnalyticsSummary,
+} from '../repository/analytics.repository';
 
 const chatRequestSchema = z.object({
    prompt: z
@@ -11,6 +17,14 @@ const chatRequestSchema = z.object({
       .min(1, 'Prompt is required')
       .max(1000, 'Prompt is too long (max 1000 characters)'),
    conversationId: z.string().trim().optional(),
+   projectId: z.string().trim().optional(),
+   templateRun: z
+      .object({
+         templateId: z.string().trim().optional(),
+         templateTitle: z.string().trim().optional(),
+         templateVersion: z.number().int().positive().optional(),
+      })
+      .optional(),
 });
 
 const client = new OpenAI({
@@ -45,7 +59,20 @@ export class ChatService {
       return { conversationId: createConversationId() };
    }
 
-   async chat(prompt: string, conversationId: string, uid: string) {
+   async chat(
+      prompt: string,
+      conversationId: string,
+      uid: string,
+      metadata?: {
+         projectId?: string | null;
+         templateRun?: {
+            templateId?: string;
+            templateTitle?: string;
+            templateVersion?: number;
+         };
+      }
+   ) {
+      const startedAt = Date.now();
       const previousConversation = await conversationRepository.getConversation(
          uid,
          conversationId
@@ -75,13 +102,52 @@ export class ChatService {
          uid,
          conversationId,
          prompt,
+         assistantMessage,
+         {
+            projectId: metadata?.projectId ?? null,
+            templateId: metadata?.templateRun?.templateId ?? null,
+            templateTitle: metadata?.templateRun?.templateTitle ?? null,
+            templateVersion: metadata?.templateRun?.templateVersion ?? null,
+         }
+      );
+
+      const estimatedTokens = analyticsRepository.estimateFromPromptAndResponse(
+         prompt,
          assistantMessage
       );
+      await analyticsRepository.recordUsageEvent({
+         uid: uid === 'anonymous' ? null : uid,
+         authType: uid === 'anonymous' ? 'guest' : 'logged_in',
+         conversationId,
+         projectId: metadata?.projectId ?? null,
+         templateId: metadata?.templateRun?.templateId ?? null,
+         templateTitle: metadata?.templateRun?.templateTitle ?? null,
+         templateVersion: metadata?.templateRun?.templateVersion ?? null,
+         promptLength: prompt.length,
+         responseLength: assistantMessage.length,
+         estimatedInputTokens: estimatedTokens.estimatedInputTokens,
+         estimatedOutputTokens: estimatedTokens.estimatedOutputTokens,
+         estimatedTotalTokens: estimatedTokens.estimatedTotalTokens,
+         responseTimeMs: Math.max(1, Date.now() - startedAt),
+      });
 
       return { message: assistantMessage };
    }
 
-   async *chatStream(prompt: string, conversationId: string, uid: string) {
+   async *chatStream(
+      prompt: string,
+      conversationId: string,
+      uid: string,
+      metadata?: {
+         projectId?: string | null;
+         templateRun?: {
+            templateId?: string;
+            templateTitle?: string;
+            templateVersion?: number;
+         };
+      }
+   ) {
+      const startedAt = Date.now();
       const previousConversation = await conversationRepository.getConversation(
          uid,
          conversationId
@@ -120,11 +186,61 @@ export class ChatService {
          uid,
          conversationId,
          prompt,
+         assistantMessage,
+         {
+            projectId: metadata?.projectId ?? null,
+            templateId: metadata?.templateRun?.templateId ?? null,
+            templateTitle: metadata?.templateRun?.templateTitle ?? null,
+            templateVersion: metadata?.templateRun?.templateVersion ?? null,
+         }
+      );
+
+      const estimatedTokens = analyticsRepository.estimateFromPromptAndResponse(
+         prompt,
          assistantMessage
       );
+      await analyticsRepository.recordUsageEvent({
+         uid: uid === 'anonymous' ? null : uid,
+         authType: uid === 'anonymous' ? 'guest' : 'logged_in',
+         conversationId,
+         projectId: metadata?.projectId ?? null,
+         templateId: metadata?.templateRun?.templateId ?? null,
+         templateTitle: metadata?.templateRun?.templateTitle ?? null,
+         templateVersion: metadata?.templateRun?.templateVersion ?? null,
+         promptLength: prompt.length,
+         responseLength: assistantMessage.length,
+         estimatedInputTokens: estimatedTokens.estimatedInputTokens,
+         estimatedOutputTokens: estimatedTokens.estimatedOutputTokens,
+         estimatedTotalTokens: estimatedTokens.estimatedTotalTokens,
+         responseTimeMs: Math.max(1, Date.now() - startedAt),
+      });
    }
 
-   async listConversations(uid: string): Promise<ConversationSummary[]> {
-      return conversationRepository.listConversations(uid);
+   async listConversations(
+      uid: string,
+      projectId?: string
+   ): Promise<ConversationSummary[]> {
+      return conversationRepository.listConversations(uid, 40, projectId);
+   }
+
+   async exportConversations(uid: string): Promise<ConversationExportItem[]> {
+      return conversationRepository.exportConversations(uid);
+   }
+
+   async deleteAllConversations(uid: string): Promise<number> {
+      return conversationRepository.deleteAllConversations(uid);
+   }
+
+   async deleteAccount(uid: string): Promise<void> {
+      await conversationRepository.deleteUserData(uid);
+      await firebaseAdminAuth.deleteUser(uid);
+   }
+
+   async getAnalyticsSummary(windowDays = 30): Promise<AnalyticsSummary> {
+      return analyticsRepository.buildSummary(windowDays);
+   }
+
+   async exportAnalyticsCsv(windowDays = 30): Promise<string> {
+      return analyticsRepository.exportSummaryCsv(windowDays);
    }
 }
