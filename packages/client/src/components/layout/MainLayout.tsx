@@ -52,11 +52,16 @@ export function MainLayout({
    onOpenProjects,
 }: MainLayoutProps) {
    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+   const [desktopSidebarHidden, setDesktopSidebarHidden] = useState(false);
 
    return (
       <div className="h-screen overflow-hidden bg-[var(--app-page-bg)]">
          <div className="flex h-full w-full overflow-hidden bg-[var(--app-shell-bg)] shadow-[0_24px_80px_rgba(6,8,18,0.45)]">
-            <div className="hidden h-full lg:flex">
+            <div
+               className={
+                  desktopSidebarHidden ? 'hidden' : 'hidden h-full lg:flex'
+               }
+            >
                <Sidebar
                   currentUser={currentUser}
                   onSignInClick={onSignInClick}
@@ -107,6 +112,10 @@ export function MainLayout({
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                <Topbar
                   onMenuClick={() => setMobileSidebarOpen(true)}
+                  sidebarHidden={desktopSidebarHidden}
+                  onToggleSidebar={() =>
+                     setDesktopSidebarHidden((current) => !current)
+                  }
                   themeMode={themeMode}
                   onCycleTheme={onCycleTheme}
                   inAppNotifications={inAppNotifications}

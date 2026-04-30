@@ -15,6 +15,12 @@ interface ChatApiResponse {
    conversationId: string;
 }
 
+type ChatStreamEvent =
+   | { type: 'conversation'; conversationId: string }
+   | { type: 'delta'; delta: string }
+   | { type: 'done'; message: string; conversationId: string }
+   | { type: 'error'; error: string };
+
 interface TemplateRunPayload {
    templateId?: string;
    templateTitle?: string;
@@ -143,6 +149,147 @@ async function requestChatReply(
    return data as ChatApiResponse;
 }
 
+async function requestChatReplyStream(
+   prompt: string,
+   conversationId: string,
+   {
+      idToken,
+      projectId,
+      templateRun,
+      signal,
+      onConversation,
+      onDelta,
+   }: {
+      idToken?: string;
+      projectId?: string | null;
+      templateRun?: TemplateRunPayload | null;
+      signal?: AbortSignal;
+      onConversation?: (nextConversationId: string) => void;
+      onDelta?: (delta: string, fullMessage: string) => void;
+   }
+): Promise<ChatApiResponse> {
+   const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+   };
+   if (idToken) {
+      headers.Authorization = `Bearer ${idToken}`;
+   }
+
+   let response: Response;
+   try {
+      response = await fetch('/api/chat/stream', {
+         method: 'POST',
+         headers,
+         body: JSON.stringify({
+            prompt,
+            conversationId,
+            projectId: projectId || undefined,
+            templateRun: templateRun || undefined,
+         }),
+         signal,
+      });
+   } catch {
+      throw new Error(
+         'Cannot reach chat API. Start the backend server on http://localhost:3000 and try again.'
+      );
+   }
+
+   if (!response.ok) {
+      const rawPayload = await response.text();
+      const data = rawPayload ? safeParseJson(rawPayload) : null;
+      const apiMessage =
+         typeof data === 'object' && data && 'error' in data
+            ? String((data as { error?: string }).error || '')
+            : '';
+
+      if (response.status === 502 || response.status === 503) {
+         throw new Error(
+            'Chat API is unavailable right now. Start the backend server on http://localhost:3000 and try again.'
+         );
+      }
+
+      throw new Error(apiMessage || `Request failed (${response.status})`);
+   }
+
+   if (!response.body) {
+      throw new Error('Chat API did not return a readable stream.');
+   }
+
+   const reader = response.body.getReader();
+   const decoder = new TextDecoder();
+   let buffer = '';
+   let fullMessage = '';
+   let resolvedConversationId = conversationId;
+
+   const handleEvent = (event: ChatStreamEvent) => {
+      if (event.type === 'conversation') {
+         resolvedConversationId = event.conversationId;
+         onConversation?.(event.conversationId);
+         return;
+      }
+
+      if (event.type === 'delta') {
+         fullMessage += event.delta;
+         onDelta?.(event.delta, fullMessage);
+         return;
+      }
+
+      if (event.type === 'done') {
+         resolvedConversationId = event.conversationId;
+         fullMessage = event.message || fullMessage;
+         return;
+      }
+
+      throw new Error(event.error || 'Something went wrong while streaming.');
+   };
+
+   const flushBuffer = () => {
+      buffer = buffer.replace(/\r\n/g, '\n');
+
+      let separatorIndex = buffer.indexOf('\n\n');
+      while (separatorIndex >= 0) {
+         const rawEvent = buffer.slice(0, separatorIndex);
+         buffer = buffer.slice(separatorIndex + 2);
+
+         const dataLines = rawEvent
+            .split('\n')
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trim());
+
+         if (dataLines.length > 0) {
+            const payload = dataLines.join('\n');
+            const parsed = safeParseJson(payload);
+            if (parsed && typeof parsed === 'object' && 'type' in parsed) {
+               handleEvent(parsed as ChatStreamEvent);
+            }
+         }
+
+         separatorIndex = buffer.indexOf('\n\n');
+      }
+   };
+
+   while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      flushBuffer();
+
+      if (done) {
+         break;
+      }
+   }
+
+   if (buffer.trim()) {
+      buffer += '\n\n';
+      flushBuffer();
+   }
+
+   return {
+      message:
+         fullMessage.trim() || "I couldn't generate a response this time.",
+      conversationId: resolvedConversationId,
+   };
+}
+
 export function ChatThread({
    currentUser,
    currentProjectId,
@@ -174,6 +321,7 @@ export function ChatThread({
    const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
    const lastAutoScrollMessageCountRef = useRef(0);
    const shouldStickToBottomRef = useRef(true);
+   const streamAbortRef = useRef<AbortController | null>(null);
 
    const currentUserId = useMemo(() => currentUser?.uid || null, [currentUser]);
 
@@ -323,6 +471,12 @@ export function ChatThread({
    }, []);
 
    useEffect(() => {
+      return () => {
+         streamAbortRef.current?.abort();
+      };
+   }, []);
+
+   useEffect(() => {
       if (isHistoryLoading) {
          return;
       }
@@ -380,12 +534,19 @@ export function ChatThread({
       }
 
       setError(null);
+      const streamingAssistantMessageId = createLocalMessageId('assistant');
       setMessages((current) => [
          ...current,
          {
             id: createLocalMessageId('user'),
             role: 'user',
             content: msg,
+            createdAt: new Date().toISOString(),
+         },
+         {
+            id: streamingAssistantMessageId,
+            role: 'assistant',
+            content: '',
             createdAt: new Date().toISOString(),
          },
       ]);
@@ -399,16 +560,29 @@ export function ChatThread({
       }
 
       try {
+         const abortController = new AbortController();
+         streamAbortRef.current = abortController;
          let result: ChatApiResponse;
 
          try {
-            result = await requestChatReply(
-               msg,
-               conversationId,
+            result = await requestChatReplyStream(msg, conversationId, {
                idToken,
-               currentProjectId,
-               pendingTemplateRun
-            );
+               projectId: currentProjectId,
+               templateRun: pendingTemplateRun,
+               signal: abortController.signal,
+               onConversation: (nextConversationId) => {
+                  setConversationId(nextConversationId);
+               },
+               onDelta: (_delta, fullMessage) => {
+                  setMessages((current) =>
+                     current.map((item) =>
+                        item.id === streamingAssistantMessageId
+                           ? { ...item, content: fullMessage }
+                           : item
+                     )
+                  );
+               },
+            });
          } catch (err) {
             const isMissingConversation =
                err instanceof Error &&
@@ -416,16 +590,60 @@ export function ChatThread({
                Boolean(conversationId);
 
             if (!isMissingConversation) {
-               throw err;
+               if (err instanceof Error && err.name === 'AbortError') {
+                  return;
+               }
+
+               result = await requestChatReply(
+                  msg,
+                  conversationId,
+                  idToken,
+                  currentProjectId,
+                  pendingTemplateRun
+               );
+               setMessages((current) =>
+                  current.map((item) =>
+                     item.id === streamingAssistantMessageId
+                        ? {
+                             ...item,
+                             content:
+                                result.message?.trim() ||
+                                "I couldn't generate a response this time.",
+                             createdAt: new Date().toISOString(),
+                          }
+                        : item
+                  )
+               );
+               setConversationId(result.conversationId);
+               if (currentUserId) {
+                  onConversationResolved(result.conversationId);
+                  onConversationUpdated();
+               }
+               if (pendingTemplateRun) {
+                  onTemplateRunAttached?.();
+               }
+               playResponseSound();
+               return;
             }
 
-            result = await requestChatReply(
-               msg,
-               '',
+            result = await requestChatReplyStream(msg, '', {
                idToken,
-               currentProjectId,
-               pendingTemplateRun
-            );
+               projectId: currentProjectId,
+               templateRun: pendingTemplateRun,
+               signal: abortController.signal,
+               onConversation: (nextConversationId) => {
+                  setConversationId(nextConversationId);
+               },
+               onDelta: (_delta, fullMessage) => {
+                  setMessages((current) =>
+                     current.map((item) =>
+                        item.id === streamingAssistantMessageId
+                           ? { ...item, content: fullMessage }
+                           : item
+                     )
+                  );
+               },
+            });
          }
 
          const assistantContent =
@@ -440,34 +658,45 @@ export function ChatThread({
          if (pendingTemplateRun) {
             onTemplateRunAttached?.();
          }
-         setMessages((current) => [
-            ...current,
-            {
-               id: createLocalMessageId('assistant'),
-               role: 'assistant',
-               content: assistantContent,
-               createdAt: new Date().toISOString(),
-            },
-         ]);
+         setMessages((current) =>
+            current.map((item) =>
+               item.id === streamingAssistantMessageId
+                  ? {
+                       ...item,
+                       content: assistantContent,
+                       createdAt: new Date().toISOString(),
+                    }
+                  : item
+            )
+         );
          playResponseSound();
       } catch (err) {
+         if (err instanceof Error && err.name === 'AbortError') {
+            return;
+         }
+
          const message =
             err instanceof Error
                ? err.message
                : 'Something went wrong while contacting the chat API.';
 
          setError(message);
-         setMessages((current) => [
-            ...current,
-            {
-               id: createLocalMessageId('assistant'),
-               role: 'assistant',
-               content:
-                  'I hit a server issue while answering. Please try again in a moment.',
-               createdAt: new Date().toISOString(),
-            },
-         ]);
+         setMessages((current) =>
+            current.map((item) =>
+               item.id === streamingAssistantMessageId
+                  ? {
+                       ...item,
+                       content:
+                          item.content.trim().length > 0
+                             ? item.content
+                             : 'I hit a server issue while answering. Please try again in a moment.',
+                       createdAt: new Date().toISOString(),
+                    }
+                  : item
+            )
+         );
       } finally {
+         streamAbortRef.current = null;
          setIsSending(false);
       }
    };

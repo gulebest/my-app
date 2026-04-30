@@ -1,10 +1,20 @@
-import { useState } from 'react';
-import { Bell, Sun, Moon, ChevronDown, Menu } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+   Bell,
+   Sun,
+   Moon,
+   ChevronDown,
+   Menu,
+   PanelLeftClose,
+   PanelLeftOpen,
+} from 'lucide-react';
 import type { ThemeMode } from '../../lib/app-settings';
 import type { ProjectWorkspace } from '../../lib/project-workspaces';
 
 interface TopbarProps {
    onMenuClick?: () => void;
+   sidebarHidden: boolean;
+   onToggleSidebar: () => void;
    themeMode: ThemeMode;
    onCycleTheme: () => void;
    inAppNotifications: boolean;
@@ -18,6 +28,8 @@ interface TopbarProps {
 
 export function Topbar({
    onMenuClick,
+   sidebarHidden,
+   onToggleSidebar,
    themeMode,
    onCycleTheme,
    inAppNotifications,
@@ -30,6 +42,8 @@ export function Topbar({
 }: TopbarProps) {
    const [dropdownOpen, setDropdownOpen] = useState(false);
    const [notificationsOpen, setNotificationsOpen] = useState(false);
+   const dropdownRef = useRef<HTMLDivElement | null>(null);
+   const notificationsRef = useRef<HTMLDivElement | null>(null);
 
    const handleDropdown = () => setDropdownOpen((v) => !v);
    const handleNotifications = () => setNotificationsOpen((v) => !v);
@@ -39,10 +53,36 @@ export function Topbar({
       : null;
    const activeProjectLabel = activeProject?.name || 'Messaging app';
 
+   useEffect(() => {
+      const handlePointerDown = (event: MouseEvent) => {
+         const target = event.target;
+         if (!(target instanceof Node)) {
+            return;
+         }
+
+         if (dropdownOpen && !dropdownRef.current?.contains(target)) {
+            setDropdownOpen(false);
+         }
+
+         if (notificationsOpen && !notificationsRef.current?.contains(target)) {
+            setNotificationsOpen(false);
+         }
+      };
+
+      document.addEventListener('mousedown', handlePointerDown);
+
+      return () => {
+         document.removeEventListener('mousedown', handlePointerDown);
+      };
+   }, [dropdownOpen, notificationsOpen]);
+
    return (
       <header className="relative flex h-16 items-center justify-between border-b border-[var(--app-divider)] bg-[var(--app-header-bg)] px-4 sm:px-6 md:px-8">
          {/* App Title and Dropdown */}
-         <div className="relative flex items-center gap-2 sm:gap-3">
+         <div
+            ref={dropdownRef}
+            className="relative flex items-center gap-2 sm:gap-3"
+         >
             <button
                type="button"
                className="rounded-lg p-2 transition hover:bg-[var(--app-soft-surface)] lg:hidden"
@@ -50,6 +90,19 @@ export function Topbar({
                aria-label="Open sidebar"
             >
                <Menu className="h-5 w-5 text-(--app-text-muted)" />
+            </button>
+            <button
+               type="button"
+               className="hidden rounded-lg p-2 transition hover:bg-[var(--app-soft-surface)] lg:flex"
+               onClick={onToggleSidebar}
+               aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+               title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+            >
+               {sidebarHidden ? (
+                  <PanelLeftOpen className="h-5 w-5 text-(--app-text-muted)" />
+               ) : (
+                  <PanelLeftClose className="h-5 w-5 text-(--app-text-muted)" />
+               )}
             </button>
             <span className="max-w-[170px] truncate text-base font-semibold text-(--app-text-strong) sm:max-w-none sm:text-lg">
                {activeProjectLabel}
@@ -125,7 +178,10 @@ export function Topbar({
             )}
          </div>
          {/* Actions */}
-         <div className="relative flex items-center gap-2 sm:gap-4">
+         <div
+            ref={notificationsRef}
+            className="relative flex items-center gap-2 sm:gap-4"
+         >
             <button
                className="relative rounded-full bg-[var(--app-soft-surface)] p-2 transition hover:opacity-85"
                onClick={handleNotifications}

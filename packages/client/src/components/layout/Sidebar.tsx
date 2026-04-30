@@ -11,7 +11,7 @@ import {
    LogOut,
    X,
 } from 'lucide-react';
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import cn from 'clsx';
 import { navigateTo } from '../../lib/navigation';
 import type { AuthUser } from '../../lib/auth-storage';
@@ -78,22 +78,47 @@ export function Sidebar({
    className,
    onClose,
 }: SidebarProps) {
+   const [searchQuery, setSearchQuery] = useState('');
+
    const handleRoute = (path: string) => {
       navigateTo(path);
       onClose?.();
    };
 
    const pathname = window.location.pathname;
+   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
    const activeProject = selectedProjectId
       ? projects.find((item) => item.id === selectedProjectId) || null
       : null;
+   const filteredHistoryItems = useMemo(() => {
+      if (!normalizedSearchQuery) {
+         return historyItems;
+      }
+
+      return historyItems.filter((item) => {
+         const projectName = item.projectId
+            ? projects.find((project) => project.id === item.projectId)?.name ||
+              ''
+            : 'General chats';
+         const searchableText = [
+            item.title,
+            item.lastMessage,
+            projectName,
+            item.lastTemplateTitle || '',
+         ]
+            .join(' ')
+            .toLowerCase();
+
+         return searchableText.includes(normalizedSearchQuery);
+      });
+   }, [historyItems, normalizedSearchQuery, projects]);
    const groupedHistory = useMemo(() => {
       const groups = new Map<
          string,
          { label: string; items: ConversationSummary[] }
       >();
 
-      for (const item of historyItems) {
+      for (const item of filteredHistoryItems) {
          const groupKey = item.projectId || '__none__';
          if (!groups.has(groupKey)) {
             const projectName = item.projectId
@@ -113,7 +138,7 @@ export function Sidebar({
          label: value.label,
          items: value.items,
       }));
-   }, [historyItems, projects]);
+   }, [filteredHistoryItems, projects]);
 
    return (
       <aside
@@ -144,7 +169,10 @@ export function Sidebar({
          <div className="relative mb-2">
             <input
                className="w-full rounded-xl bg-[var(--app-soft-surface)] py-2 pl-10 pr-3 text-sm placeholder:text-(--app-text-muted) focus:outline-none"
-               placeholder="Search"
+               placeholder="Search conversations"
+               value={searchQuery}
+               onChange={(event) => setSearchQuery(event.target.value)}
+               aria-label="Search conversations"
             />
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
          </div>
@@ -202,6 +230,10 @@ export function Sidebar({
                   ) : historyItems.length === 0 ? (
                      <p className="text-xs text-(--app-text-muted)">
                         No saved conversations yet.
+                     </p>
+                  ) : filteredHistoryItems.length === 0 ? (
+                     <p className="text-xs text-(--app-text-muted)">
+                        No conversations match "{searchQuery.trim()}".
                      </p>
                   ) : (
                      groupedHistory.map((group) => (

@@ -99,6 +99,10 @@
    --app-input-bar-bg: #24294c;
    --app-input-border: #4f5489;
    --app-assistant-bubble: #23244a;
+   --app-user-bubble: #4c4f7f;
+   --app-user-bubble-border: #6a70aa;
+   --app-user-bubble-text: #f8fafc;
+   --app-user-bubble-timestamp: #d8dcff;
    --app-text-strong: #f8fafc;
    --app-text-muted: #96a2c3;
    --app-scroll-track: #151a35;
@@ -159,6 +163,10 @@
    --app-input-bar-bg: #ffffff;
    --app-input-border: #cad4ed;
    --app-assistant-bubble: #e3e9f7;
+   --app-user-bubble: #5a5fe8;
+   --app-user-bubble-border: #7379ee;
+   --app-user-bubble-text: #f8fafc;
+   --app-user-bubble-timestamp: #e3e7ff;
    --app-text-strong: #0f172a;
    --app-text-muted: #4d5d7d;
    --app-scroll-track: #dbe3f5;

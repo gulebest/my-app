@@ -103,15 +103,15 @@ export function ChatMessage({
       >
          <div
             className={cn(
-               'rounded-2xl px-3 py-2 sm:px-4',
+               'rounded-2xl border px-3 py-2 shadow-[0_10px_24px_rgba(12,16,34,0.08)] sm:px-4',
                fontSize === 'small'
                   ? 'text-xs sm:text-sm'
                   : fontSize === 'large'
                     ? 'text-base sm:text-lg'
                     : 'text-sm sm:text-base',
                role === 'user'
-                  ? 'rounded-br-md bg-indigo-500 text-white'
-                  : 'rounded-bl-md bg-[var(--app-assistant-bubble)] text-(--app-text-strong)'
+                  ? 'rounded-br-md border-[var(--app-user-bubble-border)] bg-[var(--app-user-bubble)] text-[var(--app-user-bubble-text)]'
+                  : 'rounded-bl-md border-transparent bg-[var(--app-assistant-bubble)] text-(--app-text-strong)'
             )}
             style={{ maxWidth: `${bubbleWidth}%` }}
          >
@@ -121,7 +121,7 @@ export function ChatMessage({
                   className={cn(
                      'mt-1 text-[10px]',
                      role === 'user'
-                        ? 'text-indigo-100'
+                        ? 'text-[var(--app-user-bubble-timestamp)]'
                         : 'text-(--app-text-muted)'
                   )}
                >
